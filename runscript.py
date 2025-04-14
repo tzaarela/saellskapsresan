@@ -4,6 +4,7 @@ import re
 import io
 import ast
 import argparse
+import subprocess
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -23,6 +24,8 @@ parser.add_argument('-noupload', action='store_true', help="Dont upload, only do
 args = parser.parse_args()
 shouldReset = args.reset
 shouldNotUpload = args.noupload
+shouldStartGame = True
+wow_process = None
 
 # Admin account
 user_email = 'jimmysaarela@gmail.com'
@@ -65,11 +68,11 @@ def upload_file(service, file_id, local_path):
         media = MediaFileUpload(local_path, resumable=True)
         response = service.files().update(fileId=file_id, media_body=media).execute()
         if response and 'id' in response:
-            print(f"✅ Upload successful! File ID: {response['id']}")
+            print(f"[LOG] Upload successful! File ID: {response['id']}")
         else:
-            print("⚠️ Upload completed, but no file ID returned.")
+            print("[WARNING] Upload completed, but no file ID returned.")
     except HttpError as error:
-        print(f"❌ Upload failed: {error}")
+        print(f"[ERROR] Upload failed: {error}")
 
 def extract_lua_table(content, var_name):
     match = re.search(rf'{var_name}\s*=\s*({{.*?}})', content, re.DOTALL)
@@ -84,7 +87,7 @@ def extract_lua_table(content, var_name):
         try:
             return ast.literal_eval(py_compatible)
         except Exception as e:
-            print("⚠️ Failed to parse Lua table:", e)
+            print("[WARNING] Failed to parse Lua table:", e)
     return []
 
 # Looks for a line in the Lua file like "ShouldRefresh = true" or "false"
@@ -141,35 +144,34 @@ def is_duplicate(new_log_str, existing_log_strs):
     return False
 
 # Merges both local and remote entries into a unified table.
-# Detects if any entries need to be uploaded (local ➡️ remote) or downloaded (remote ➡️ local).
-# Returns the merged table, needsUpload, and needsUpdate flags.
+# Detects if any entries need to be uploaded
 def merge_entries(local_entries, remote_entries):
-    print("✅ Merge entries.")
+    print("[LOG] Merging entries.")
 
     merged = dict(remote_entries)
     needsUpload = False
     needsUpdate = False
     next_index = max(merged.keys(), default=0) + 1
 
-    # Merge local ➡️ remote
+    # Merge local [LOG] remote
     for log in local_entries.values():
         if not is_duplicate(log, remote_entries):
             merged[next_index] = log
             next_index += 1
             needsUpdate = True
             needsUpload = True
-        else:
-            print("➡️ local found duplicate in remote, not addint it!")
+        # else:
+        #     print("[LOG] local found duplicate in remote, not addint it!")
             
-    # Merge remote ➡️ local
+    # Merge remote [LOG] local
     next_index = len(local_entries) + 1
     for log in remote_entries.values():
         if not is_duplicate(log, local_entries):
             merged[next_index] = log
             next_index += 1
             needsUpdate = True
-        else:
-            print("➡️ remote found duplicate in local, not adding it!")
+        # else:
+        #     print("[LOG] remote found duplicate in local, not adding it!")
 
     # Sort merged entries by timestamp
     sorted_items = sorted(
@@ -186,7 +188,7 @@ def merge_entries(local_entries, remote_entries):
 # Clears the remote Lua file, resetting the DeathLoggerDB to an empty table.
 def clear_remote_data(service, file_id):
     
-    print("✅ Clearing Remote Data")
+    print("[LOG] Clearing Remote Data")
     global shouldReset
     shouldReset = False
 
@@ -197,12 +199,41 @@ def clear_remote_data(service, file_id):
         media = MediaInMemoryUpload(empty_content.encode('utf-8'), mimetype='text/plain')
         response = service.files().update(fileId=file_id, media_body=media).execute()
         if response and 'id' in response:
-            print("🧹 Remote DeathLoggerDB has been cleared successfully.")
+            print("[LOG] Remote database has been cleared successfully.")
         else:
-            print("⚠️ Clearing remote file completed, but no confirmation ID returned.")
+            print("[WARNING] Clearing remote file completed, but no confirmation ID returned.")
     except Exception as e:
-        print(f"❌ Failed to clear remote data: {e}")
+        print(f"[ERROR] Failed to clear remote data: {e}")
 
+def sync_ready_start_wow():
+
+    # Creating a sync_ready flag for the .bat file to know it´s ready to close.
+    with open("sync_ready.flag", "w") as f:
+        f.write("ready")
+
+    global shouldStartGame
+    shouldStartGame = False
+    print("[LOG] Sync done.")
+    
+    # Get the full path to wow.exe/vanilla.exe
+    exe_path = "../../../VanillaFixes.exe"
+    print("[DEBUG] Attempting to launch WoW from:", exe_path)
+
+    # Then launch it
+    try:
+        wow_process = subprocess.Popen([exe_path])
+    except FileNotFoundError:
+        print("[ERROR] WoW executable not found at:", exe_path)
+        exit(1)
+
+    print("[LOG] Launching Turtle WoW... Please dont close this window while playing!")
+
+# Call this method to create permissions (not called anywhere at the moment)
+def create_permissions(service, file_id):
+    service.permissions().create(
+        fileId=file_id,
+        body=permission,
+        fields='id').execute()
 
 
 # SYNC LOOP UPDATE
@@ -212,21 +243,21 @@ def sync_loop():
     file_id = find_or_create_file(service, FILE_NAME)
     last_modified = None
 
-    service.permissions().create(
-    fileId=file_id,
-    body=permission,
-    fields='id').execute()
-
     # Check if file exists
     if not os.path.exists(LOCAL_FILE_PATH):
-        print(f"📌 File '{LOCAL_FILE_PATH}' does not exist. Creating it...")
+        print(f"[LOG] File '{LOCAL_FILE_PATH}' does not exist. Creating it...")
         with open(LOCAL_FILE_PATH, 'w', encoding='cp1252') as f:
             f.write("DeathLoggerDB = { }\n")
 
-    print(f"🌀 Syncing {FILE_NAME} with Google Drive...")
+    print(f"[LOG] Syncing with online database...")
 
     while True:
         try:
+            # Check if WoW is still running
+            if wow_process and wow_process.poll() is not None:
+                print("[LOG] WoW has exited. Shutting down sync.")
+                break  # Exit the sync loop
+
             stat = os.stat(LOCAL_FILE_PATH)
             mod_time = stat.st_mtime
 
@@ -235,19 +266,19 @@ def sync_loop():
 
             elif last_modified is None or mod_time != last_modified:
                 last_modified = mod_time
-                print("📄 Local file change detected...")
+                print("[LOG] Local file change detected.")
 
                 with open(LOCAL_FILE_PATH, 'r') as f:
                     local_content = f.read()
 
                 should_refresh = extract_bool_var(local_content, "ShouldRefresh")
                 if should_refresh:
-                    print("🔁 Refreshing local file from Drive (ShouldRefresh = true)")
+                    print("[LOG] Refreshing local file from database (ShouldRefresh = true)")
                     download_file(service, file_id, FILE_NAME)
                     continue
 
                 if 'DeathLoggerDB' in local_content:
-                    print("☁️ Syncing changes...")
+                    print("[LOG] Syncing changes...")
 
                     # Step 1: Download remote copy
                     download_file(service, file_id, TEMP_REMOTE_COPY)
@@ -263,28 +294,33 @@ def sync_loop():
                     updated_content = replace_table_in_lua(remote_content, "DeathLoggerDB", new_table_str)
 
                     if needsUpdate:
-                        print("📌 New entries detected!")
+                        print("[LOG] New entries detected!")
                         with open(LOCAL_FILE_PATH, 'w') as f:
                             f.write(updated_content)
 
                         if needsUpload:
-                            
-                            ### ONLY FOR DEBUGGING
                             global shouldNotUpload
-                            if (shouldNotUpload):
-                                print("✅ Skipped upload.")
+                            if shouldNotUpload:
+                                print("[LOG] Skipped upload.")
                                 return
-                            ###
 
-                            print("📌 Uploading to remote server...")
+                            print("[LOG] Uploading to remote database...")
                             upload_file(service, file_id, LOCAL_FILE_PATH)
-                            print("✅ Uploaded merged file to Drive.")
+                            print("[LOG] Uploaded merged file to database.")
                     else:
-                        print("🔍 No new entries to merge.")
+                        print("[LOG] No new entries to merge.")
+
+                        if shouldStartGame:
+                            sync_ready_start_wow()
         except Exception as e:
-            print(f"⚠️ Error: {e}")
+            print(f"[WARNING] Error: {e}")
 
         time.sleep(2)
+
+
+
+
+
 
 if __name__ == "__main__":
     sync_loop()

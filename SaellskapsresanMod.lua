@@ -141,7 +141,7 @@ OpenUI = function()
     close:SetText("Stäng")
     close:SetScript("OnClick", function() MainFrame:Hide() end)
 
-    -- === Reset Button (moved from uiFrame) ===
+    -- === Reset Button ===
     local refresh = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
     refresh:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -120, 20)
     refresh:SetWidth(90)
@@ -365,8 +365,7 @@ function GenerateDeathLog()
     local fontFlags = nil
 
     -- Rebuild the UI from current DB
-
-    print("[Sällskapsresan] Uppdaterar " .. tostring(GetTableLength(DeathLoggerDB)) .. " st dödsfall i dödslistan" );
+    print("[Sällskapsresan] Uppdaterar " .. tostring(GetTableLength(DeathLoggerDB)) .. "st dödsfall i dödslistan" );
     
     for i, entry in ipairs(DeathLoggerDB or {}) do
         local fontString = logList:CreateFontString("deathEntry"..i, "OVERLAY")
@@ -452,7 +451,6 @@ function GetFirstNumberInString(text)
     -- DEFAULT_CHAT_FRAME:AddMessage("No DamageNumber found in: " .. text)
     return nil
 end
-
 
 -- slash Commands
 SLASH_SSR1 = "/sr"
