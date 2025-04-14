@@ -5,6 +5,7 @@ import io
 import ast
 import argparse
 import subprocess
+import psutil
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -26,6 +27,7 @@ shouldReset = args.reset
 shouldNotUpload = args.noupload
 shouldStartGame = True
 wow_process = None
+isGameRunning = False
 
 # Admin account
 user_email = 'jimmysaarela@gmail.com'
@@ -221,7 +223,11 @@ def sync_ready_start_wow():
 
     # Then launch it
     try:
+        global wow_process
         wow_process = subprocess.Popen([exe_path])
+        global isGameRunning
+        isGameRunning = True
+        
     except FileNotFoundError:
         print("[ERROR] WoW executable not found at:", exe_path)
         exit(1)
@@ -234,6 +240,14 @@ def create_permissions(service, file_id):
         fileId=file_id,
         body=permission,
         fields='id').execute()
+    
+
+# A check to see if wow process is running
+def is_wow_running():
+    for proc in psutil.process_iter(['name']):
+        if proc.info['name'] and "wow" in proc.info['name'].lower():
+            return True
+    return False
 
 
 # SYNC LOOP UPDATE
@@ -254,9 +268,10 @@ def sync_loop():
     while True:
         try:
             # Check if WoW is still running
-            if wow_process and wow_process.poll() is not None:
+            if isGameRunning and not is_wow_running():
                 print("[LOG] WoW has exited. Shutting down sync.")
-                break  # Exit the sync loop
+                break
+                # Exit the sync loop
 
             stat = os.stat(LOCAL_FILE_PATH)
             mod_time = stat.st_mtime

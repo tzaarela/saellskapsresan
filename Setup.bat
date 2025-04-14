@@ -47,7 +47,7 @@ echo Python found at: !PYTHON_EXE!
 
 echo Installing required packages...
 "!PYTHON_EXE!" -m pip install --upgrade pip
-"!PYTHON_EXE!" -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2
+"!PYTHON_EXE!" -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 psutil
 
 REM === COPY THE BATCH FILE ===
 call :copy_batch_file
