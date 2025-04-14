@@ -194,13 +194,13 @@ systemFrame:SetScript("OnEvent", function()
 
         local currentHealth = UnitHealth("player")
 
-        DEFAULT_CHAT_FRAME:AddMessage("damage: " .. damage .. " previousHealth: " .. currentHealth .. "new health: " .. currentHealth - damage, 1, 0.5, 0)
+        -- DEFAULT_CHAT_FRAME:AddMessage("damage: " .. damage .. " previousHealth: " .. currentHealth .. "new health: " .. currentHealth - damage, 1, 0.5, 0)
 
         ParseKiller(arg1)
 
-        if currentHealth - damage <= 125 then
-            ReportDeath()
-        end
+        -- if currentHealth - damage <= 125 then
+        --     ReportDeath()
+        -- end
 
         -- If player dies
     elseif event == "PLAYER_DEAD" then
@@ -320,19 +320,21 @@ ReportDeath = function()
             local zone = GetZoneText()
             local killer = LastKiller or "en främmande varelse"
             local deathMessage = CreateDeathLogRow(timestamp, zone,playerName, level, killer);
-            DEFAULT_CHAT_FRAME:AddMessage("Du dog!")
+            print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
             
             table.insert(DeathLoggerDB, deathMessage)
-            DeathLoggerExport = table.concat(DeathLoggerDB, "\n")
             
-            SendChatMessage(CreateRandomGuildDeathMessage(level, killer))
-            DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
+            -- TODO - Finish print guild message or some kind of dramatic announcment that guild member died 
+            -- SendChatMessage(CreateRandomGuildDeathMessage(level, killer))
+            -- DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
 end
 
 function RefreshDeathLog()
-    DeathLoggerDB = {}
-    print("Death log cleared!")
-    GenerateDeathLog() -- Refresh the UI
+    -- GenerateDeathLog() -- Refresh the UI
+    DeathLoggerDB = { }
+    ReloadUI()
+    print("[Sällskapsresan] Uppdaterat dödsloggen.")
+    OpenUI()
 end
 
 -- Table to store references to the font strings so we can clear them later
@@ -363,6 +365,9 @@ function GenerateDeathLog()
     local fontFlags = nil
 
     -- Rebuild the UI from current DB
+
+    print("[Sällskapsresan] Uppdaterar " .. tostring(GetTableLength(DeathLoggerDB)) .. " st dödsfall i dödslistan" );
+    
     for i, entry in ipairs(DeathLoggerDB or {}) do
         local fontString = logList:CreateFontString("deathEntry"..i, "OVERLAY")
         fontString:SetFont(fontPath, fontSize, fontFlags)
@@ -371,6 +376,14 @@ function GenerateDeathLog()
         fontString:Show()
         table.insert(deathFontStrings, fontString) -- Track it<<<<<>
     end
+end
+
+function GetTableLength(t)
+    local count = 0
+    for _ in pairs(t) do
+        count = count + 1
+    end
+    return count
 end
 
 function ParseKillerName(msg)
@@ -430,13 +443,13 @@ function GetFirstNumberInString(text)
                 end
             end
 
-            DEFAULT_CHAT_FRAME:AddMessage("Converted to DamageNumber: " .. numberStr)
+            -- DEFAULT_CHAT_FRAME:AddMessage("Converted to DamageNumber: " .. numberStr)
             return tonumber(numberStr)
         end
     end
 
     -- DEBUG: Show that nothing was found
-    DEFAULT_CHAT_FRAME:AddMessage("No DamageNumber found in: " .. text)
+    -- DEFAULT_CHAT_FRAME:AddMessage("No DamageNumber found in: " .. text)
     return nil
 end
 

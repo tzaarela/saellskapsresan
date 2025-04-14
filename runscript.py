@@ -217,6 +217,12 @@ def sync_loop():
     body=permission,
     fields='id').execute()
 
+    # Check if file exists
+    if not os.path.exists(LOCAL_FILE_PATH):
+        print(f"📌 File '{LOCAL_FILE_PATH}' does not exist. Creating it...")
+        with open(LOCAL_FILE_PATH, 'w', encoding='cp1252') as f:
+            f.write("DeathLoggerDB = { }\n")
+
     print(f"🌀 Syncing {FILE_NAME} with Google Drive...")
 
     while True:

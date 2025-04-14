@@ -5,6 +5,5 @@
 ## Notes: Mod for sällskapsresan
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
-## SavedVariables: DeathLoggerDB,DeathLoggerExport
+## SavedVariables: DeathLoggerDB
 SaellskapsresanMod.lua
-SaellskapresanModForm.xml
