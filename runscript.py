@@ -11,6 +11,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from googleapiclient.errors import HttpError
+from datetime import datetime
+
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 SERVICE_ACCOUNT_FILE = 'service-account.json'
@@ -22,10 +24,13 @@ TEMP_REMOTE_COPY = "temp_remote.lua"
 parser = argparse.ArgumentParser(description="Sync DeathLoggerDB with Google Drive.")
 parser.add_argument('-reset', action='store_true', help="Clear the remote DeathLoggerDB file.")
 parser.add_argument('-noupload', action='store_true', help="Dont upload, only download")
+parser.add_argument('-character', type=str, help="Character name for LastLogonDB update")
 args = parser.parse_args()
 shouldReset = args.reset
 shouldNotUpload = args.noupload
+character_name_debug = args.character
 shouldStartGame = True
+shouldUpload_lastlogon = True
 wow_process = None
 isGameRunning = False
 
@@ -78,8 +83,13 @@ def upload_file(service, file_id, local_path):
 
 def extract_lua_table(content, var_name):
     match = re.search(rf'{var_name}\s*=\s*({{.*?}})', content, re.DOTALL)
-    if match:
-        lua_table = match.group(1)
+    if not match:
+        return {}
+    
+    lua_table = match.group(1)
+    
+    if var_name == "DeathLoggerDB":
+        # For DeathLoggerDB (numeric keys with string values)
         # Replace boolean and nil values to Python equivalents
         py_compatible = lua_table.replace('true', 'True').replace('false', 'False').replace('nil', 'None')
         # Convert Lua numeric keys [1] = ... into Python's 1: ... format.
@@ -89,8 +99,21 @@ def extract_lua_table(content, var_name):
         try:
             return ast.literal_eval(py_compatible)
         except Exception as e:
-            print("[WARNING] Failed to parse Lua table:", e)
-    return []
+            print(f"[WARNING] Failed to parse {var_name} table:", e)
+            return {}
+    
+    elif var_name == "LastLogonDB":
+        # For LastLogonDB (string keys with date string values)
+        result = {}
+        # Find all entries like: ["CharacterName"] = "25-04-15 04:26:43",
+        entries = re.findall(r'\["([^"]+)"\]\s*=\s*"([^"]+)"', lua_table)
+        for char_name, timestamp_str in entries:
+            result[char_name] = timestamp_str
+        return result
+    
+    return {}
+
+
 
 # Looks for a line in the Lua file like "ShouldRefresh = true" or "false"
 # and returns the corresponding Python boolean.
@@ -116,8 +139,21 @@ def replace_table_in_lua(content, var_name, new_table_str):
 def format_python_table_as_lua(py_table):
     lines = []
     for index, value in py_table.items():
-        escaped = value.replace('"', '\\"')  # Escape quotes
-        lines.append(f'\t[{index}] = "{escaped}"')
+        if isinstance(index, int):
+            # For numeric indices (DeathLoggerDB)
+            escaped = value.replace('"', '\\"')  # Escape quotes
+            lines.append(f'\t[{index}] = "{escaped}"')
+        else:
+            # For string indices (LastLogonDB)
+            lines.append(f'\t["{index}"] = {value}')
+    return "{\n" + ",\n".join(lines) + "\n}"
+
+# Formats a Python dictionary for LastLogonDB into Lua-style table
+def format_lastlogon_table_as_lua(py_table):
+    lines = []
+    for char_name, timestamp in py_table.items():
+        # Format the timestamp without quotes (as it appears in the file)
+        lines.append(f'\t["{char_name}"] = {timestamp}')
     return "{\n" + ",\n".join(lines) + "\n}"
 
 # Extracts the timestamp (as float) from a log entry.
@@ -186,7 +222,6 @@ def merge_entries(local_entries, remote_entries):
 
 
 
-
 # Clears the remote Lua file, resetting the DeathLoggerDB to an empty table.
 def clear_remote_data(service, file_id):
     
@@ -251,28 +286,29 @@ def is_wow_running():
 
 
 # SYNC LOOP UPDATE
-
+# SYNC LOOP UPDATE
 def sync_loop():
     service = get_drive_service()
     file_id = find_or_create_file(service, FILE_NAME)
     last_modified = None
 
-    # Check if file exists
+    # Check if SavedVariables file exists or we create one
     if not os.path.exists(LOCAL_FILE_PATH):
         print(f"[LOG] File '{LOCAL_FILE_PATH}' does not exist. Creating it...")
         with open(LOCAL_FILE_PATH, 'w', encoding='cp1252') as f:
-            f.write("DeathLoggerDB = { }\n")
+            f.write("DeathLoggerDB = { }\nLastLogonDB = { }\n")
 
     print(f"[LOG] Syncing with online database...")
 
     while True:
         try:
-            # Check if WoW is still running
+            # Check if WoW is still running or we exit
             if isGameRunning and not is_wow_running():
                 print("[LOG] WoW has exited. Shutting down sync.")
                 break
                 # Exit the sync loop
 
+            #Get stats and see if local file has been modified
             stat = os.stat(LOCAL_FILE_PATH)
             mod_time = stat.st_mtime
 
@@ -300,43 +336,72 @@ def sync_loop():
                     with open(TEMP_REMOTE_COPY, 'r') as f:
                         remote_content = f.read()
 
-                    # Step 2: Extract and merge
-                    local_entries = extract_lua_table(local_content, "DeathLoggerDB")
-                    remote_entries = extract_lua_table(remote_content, "DeathLoggerDB")
+                    # Step 2: Extract and merge DeathLoggerDB
+                    local_deathlog = extract_lua_table(local_content, "DeathLoggerDB")
+                    remote_deathlog = extract_lua_table(remote_content, "DeathLoggerDB")
 
-                    merged_entries, needsUpload, needsUpdate = merge_entries(local_entries, remote_entries)
-                    new_table_str = format_python_table_as_lua(merged_entries)
-                    updated_content = replace_table_in_lua(remote_content, "DeathLoggerDB", new_table_str)
+                    merged_deathlog, needsUpload_deathlog, needsUpdate_deathlog = merge_entries(local_deathlog, remote_deathlog)
+                    
+                    # Step 3: Extract LastLogonDB from both local and remote
+                    local_lastlogon = extract_lua_table(local_content, "LastLogonDB")
+                    remote_lastlogon = extract_lua_table(remote_content, "LastLogonDB")
+                    
+                    # Merge LastLogonDB (one-way from client to server)
+                    merged_lastlogon = dict(remote_lastlogon)
+                    needsUpload_lastlogon = False
+                    
+                    # Update any character entries from local to remote
+                    for char, timestamp in local_lastlogon.items():
+                        if char not in merged_lastlogon or timestamp != merged_lastlogon.get(char, ""):
+                            merged_lastlogon[char] = timestamp
+                            needsUpload_lastlogon = True
+                            print(f"[LOG] Updating timestamp for character: {char}")
+                    
+                                            # Step 4: Generate updated content
+                    deathlog_table_str = format_python_table_as_lua(merged_deathlog)
+                    lastlogon_table_str = format_lastlogon_table_as_lua(merged_lastlogon)
+                    
+                    # First update local file with only merged DeathLoggerDB (not LastLogonDB)
+                    local_updated_content = replace_table_in_lua(local_content, "DeathLoggerDB", deathlog_table_str)
+                    
+                    # Update remote content with both tables for upload purposes
+                    remote_updated_content = replace_table_in_lua(remote_content, "DeathLoggerDB", deathlog_table_str)
+                    remote_updated_content = replace_table_in_lua(remote_updated_content, "LastLogonDB", lastlogon_table_str)
+                    
+                    needsUpload = needsUpload_deathlog or needsUpload_lastlogon
+                    needsUpdate = needsUpdate_deathlog
 
                     if needsUpdate:
-                        print("[LOG] New entries detected!")
+                        print("[LOG] New DeathLoggerDB entries detected - updating local file!")
+                        # Only write DeathLoggerDB changes to local file
                         with open(LOCAL_FILE_PATH, 'w') as f:
-                            f.write(updated_content)
+                            f.write(local_updated_content)
+                    
+                    # Upload if either DeathLoggerDB or LastLogonDB needs updates
+                    if needsUpload:
+                        global shouldNotUpload
+                        if shouldNotUpload:
+                            print("[LOG] Skipped upload.")
+                            if shouldStartGame:
+                                sync_ready_start_wow()
+                            continue
 
-                        if needsUpload:
-                            global shouldNotUpload
-                            if shouldNotUpload:
-                                print("[LOG] Skipped upload.")
-                                return
-
-                            print("[LOG] Uploading to remote database...")
-                            upload_file(service, file_id, LOCAL_FILE_PATH)
-                            print("[LOG] Uploaded merged file to database.")
+                        print("[LOG] Uploading to remote database...")
+                        
+                        # Write the full updated content to temp file for upload
+                        with open(TEMP_REMOTE_COPY, 'w') as f:
+                            f.write(remote_updated_content)
+                            
+                        upload_file(service, file_id, TEMP_REMOTE_COPY)
+                        print("[LOG] Uploaded merged file to database.")
                     else:
                         print("[LOG] No new entries to merge.")
 
-                        if shouldStartGame:
-                            sync_ready_start_wow()
+                    if shouldStartGame:
+                        sync_ready_start_wow()
         except Exception as e:
             print(f"[WARNING] Error: {e}")
 
         time.sleep(2)
-
-
-
-
-
-
 if __name__ == "__main__":
     sync_loop()
-

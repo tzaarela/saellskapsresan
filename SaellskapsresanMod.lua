@@ -14,6 +14,7 @@ systemFrame:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_SPELL_DAMAGE")
 -- Initialize UI function (called in ADDON_LOADED)
 InitializeSystem = function()
     DeathLoggerDB = DeathLoggerDB or {}
+    LastLogonDB = LastLogonDB or {}
     DEFAULT_CHAT_FRAME:AddMessage("Sällskapsresan-Mod v0.1 har initierats!", 1, 0.5, 0)
 end
 
@@ -163,6 +164,9 @@ CloseUI = function()
 end
 
 
+
+
+
 -- Update Loop (uncomment below if needed and remove this parenteses)
 -- systemFrame:SetScript("OnUpdate",function(s,e)
 
@@ -181,6 +185,7 @@ systemFrame:SetScript("OnEvent", function()
 
         this.loaded = true
         InitializeSystem();
+        RecordPlayerLogin()
         
     
     -- If we get hit by creature melee/spell hits. I use this for testing somethings.
@@ -198,15 +203,30 @@ systemFrame:SetScript("OnEvent", function()
 
         ParseKiller(arg1)
 
-        -- if currentHealth - damage <= 125 then
-        --     ReportDeath()
-        -- end
+        if currentHealth - damage <= 0 then
+            print("[Sällskapsresan] Du ska ha dött vid det här laget.")
+        end
+    end
 
         -- If player dies
-    elseif event == "PLAYER_DEAD" then
+    if event == "PLAYER_DEAD" then
+        print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
         ReportDeath()
     end
 end)
+
+
+-- Function to record player login
+RecordPlayerLogin = function()
+    if not LastLogonDB then
+        LastLogonDB = {}
+    end
+
+-- Update current characters timestamp
+    local playerName = UnitName("player")
+    local dateTime = date("%y-%m-%d %H:%M:%S")
+    LastLogonDB[playerName] = dateTime
+end
 
 local function CreateDeathLogRow(timestamp, zone, name, level, killer)
     local green = "|cff00ff00"
@@ -315,18 +335,19 @@ end
 -- Send message and report when dead
 ReportDeath = function()
     local timestamp = date("%y-%m-%d %H:%M:%S")
-            local level = UnitLevel("player") or "??"
-            local playerName = UnitName("player")
-            local zone = GetZoneText()
-            local killer = LastKiller or "en främmande varelse"
-            local deathMessage = CreateDeathLogRow(timestamp, zone,playerName, level, killer);
-            print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
-            
-            table.insert(DeathLoggerDB, deathMessage)
-            
-            -- TODO - Finish print guild message or some kind of dramatic announcment that guild member died 
-            -- SendChatMessage(CreateRandomGuildDeathMessage(level, killer))
-            -- DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
+    local level = UnitLevel("player") or "??"
+    local playerName = UnitName("player")
+    local zone = GetZoneText()
+    local killer = LastKiller or "en främmande varelse"
+    local deathMessage = CreateDeathLogRow(timestamp, zone,playerName, level, killer);
+
+    print("[Sällskapsresan] " .. deathMessage)
+    
+    table.insert(DeathLoggerDB, deathMessage)
+    
+    -- TODO - Finish print guild message or some kind of dramatic announcment that guild member died 
+    -- SendChatMessage(CreateRandomGuildDeathMessage(level, killer))
+    -- DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
 end
 
 function RefreshDeathLog()
@@ -343,7 +364,7 @@ function GenerateDeathLog()
     local deathFontStrings = {}
     -- Ensure the deathFontStrings table exists
     if not deathFontStrings then
-        deathFontStrings = {}  -- Initialize the table if it doesn't exist
+        deathFontStrings = {}  -- Initialize the table if it doesnt exist
     end
 
     -- Clear existing font strings from the UI
@@ -458,3 +479,69 @@ SLASH_SSR2 = "/ssr"
 SLASH_SSR3 = "/sällskapsresan"
 SLASH_SSR4 = "/saellskapsresan"
 SlashCmdList["SSR"] = OpenUI
+
+
+local addonName = "SaellskapsresanMod"
+local SSR = {}
+
+-- Libs
+local LDB = LibStub("LibDataBroker-1.1")
+local DBIcon = LibStub("LibDBIcon-1.0")
+
+-- Defaults
+local defaultDB = {
+    minimap = {
+        hide = false,
+    },
+}
+
+-- Create the LDB object
+local SSR_LDB = LDB:NewDataObject("SSR", {
+    type = "data source",
+    text = "Saellskapsresan!",
+    icon = "Interface\\Icons\\INV_Chest_Cloth_17",
+    OnClick = function()
+        print("OPEN Saellskapsresan")
+        print("/ssr")
+    end,
+    OnTooltipShow = function(tooltip)
+        tooltip:AddLine("Saellskapsresan")
+        tooltip:AddLine("Click topen!", 1, 1, 1)
+    end,
+})
+
+-- Initialize SavedVariables and icon
+function SSR:Initialize()
+    -- Fallback to default if needed
+    SSR_DB = SSR_DB or {}
+    for k, v in pairs(defaultDB) do
+        if type(SSR_DB[k]) ~= "table" then
+            SSR_DB[k] = {}
+        end
+        for sk, sv in pairs(v) do
+            if SSR_DB[k][sk] == nil then
+                SSR_DB[k][sk] = sv
+            end
+        end
+    end
+
+    DBIcon:Register("SSR", SSR_LDB, SSR_DB.minimap)
+end
+
+-- Create event listener
+local frame = CreateFrame("Frame")
+frame:SetScript("OnEvent", function()
+    if event == "ADDON_LOADED" and arg1 == addonName then
+        SSR:Initialize()
+    end
+end)
+
+-- Optional: Toggle minimap icon manually
+function SSR:ToggleMinimapIcon()
+    SSR_DB.minimap.hide = not SSR_DB.minimap.hide
+    if SSR_DB.minimap.hide then
+        DBIcon:Hide("SSR")
+    else
+        DBIcon:Show("SSR")
+    end
+end
