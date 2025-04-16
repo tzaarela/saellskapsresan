@@ -30,7 +30,6 @@ parser = argparse.ArgumentParser(description="Sync DeathLoggerDB with Google Dri
 parser.add_argument('-reset', action='store_true', help="Clear the remote DeathLoggerDB file.")
 parser.add_argument('-noupload', action='store_true', help="Dont upload, only download")
 parser.add_argument('-character', type=str, help="Character name for LastLogonDB update")
-parser.add_argument('-character', type=str, help="Character name for LastLogonDB update")
 args = parser.parse_args()
 
 # Global variables
