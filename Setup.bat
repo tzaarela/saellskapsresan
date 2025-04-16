@@ -79,7 +79,7 @@ echo Installing required Python packages...
 "%PYTHON_EXE%" -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 psutil
 
 REM === STEP 3: Copy launcher script ===
-set "SRC_FILE=%~dp0Saellskapsresan.bat"
+set "SRC_FILE=%~dp0Saellskapsresan.exe"
 set "DEST_DIR=%~dp0..\..\..\"
 
 if not exist "%SRC_FILE%" (
@@ -98,6 +98,9 @@ if %ERRORLEVEL% NEQ 0 (
         exit /b 1
     )
 )
+
+REM === Remove the original file after copying ===
+del "%SRC_FILE%" 2>nul
 
 echo Saellskapsresan Mod installed successfully!
 pause

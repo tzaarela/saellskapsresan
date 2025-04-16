@@ -275,6 +275,11 @@ def sync_ready_start_wow():
     
     # Get the full path to wow.exe/vanilla.exe
     exe_path = "../../../VanillaFixes.exe"
+
+    # Check if the VanillaFixes exists, if not, set it to WoW.exe
+    if not os.path.exists(exe_path):
+        exe_path = "../../../WoW.exe"
+    
     print("[DEBUG] Attempting to launch WoW from:", exe_path)
 
     # Then launch it
