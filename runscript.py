@@ -11,10 +11,17 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from googleapiclient.errors import HttpError
+from datetime import datetime
 
+# Replaces "ACCOUNTNAME" with the accountname in accountName.txt
+with open("accountname.txt", "r") as f:
+    accountName = f.read().strip().upper()
+path = "../../../WTF/Account/ACCOUNTNAME/SavedVariables/SaellskapsresanMod.lua"
+
+#Constants
+LOCAL_FILE_PATH = path.replace("ACCOUNTNAME", accountName)
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 SERVICE_ACCOUNT_FILE = 'service-account.json'
-LOCAL_FILE_PATH = "../../../WTF/Account/TZAA/SavedVariables/SaellskapsresanMod.lua"
 FILE_NAME = "SaellskapsresanMod.lua"
 TEMP_REMOTE_COPY = "temp_remote.lua"
 
@@ -22,22 +29,20 @@ TEMP_REMOTE_COPY = "temp_remote.lua"
 parser = argparse.ArgumentParser(description="Sync DeathLoggerDB with Google Drive.")
 parser.add_argument('-reset', action='store_true', help="Clear the remote DeathLoggerDB file.")
 parser.add_argument('-noupload', action='store_true', help="Dont upload, only download")
+parser.add_argument('-character', type=str, help="Character name for LastLogonDB update")
 args = parser.parse_args()
+
+# Global variables
 shouldReset = args.reset
 shouldNotUpload = args.noupload
+character_name_debug = args.character
 shouldStartGame = True
-wow_process = None
+shouldUpload_lastlogon = True
 isGameRunning = False
+isFirstCheck = True
+wow_process = None
 
-# Admin account
-user_email = 'jimmysaarela@gmail.com'
-permission = {
-    'type': 'user',
-    'role': 'writer',  # or 'writer', 'commenter'
-    'emailAddress': user_email
-}
-
-#DEFINITIONS
+#### DEFINITIONS #####
 def get_drive_service():
     credentials = service_account.Credentials.from_service_account_file(
         SERVICE_ACCOUNT_FILE,
@@ -78,8 +83,13 @@ def upload_file(service, file_id, local_path):
 
 def extract_lua_table(content, var_name):
     match = re.search(rf'{var_name}\s*=\s*({{.*?}})', content, re.DOTALL)
-    if match:
-        lua_table = match.group(1)
+    if not match:
+        return {}
+    
+    lua_table = match.group(1)
+    
+    if var_name == "DeathLoggerDB":
+        # For DeathLoggerDB (numeric keys with string values)
         # Replace boolean and nil values to Python equivalents
         py_compatible = lua_table.replace('true', 'True').replace('false', 'False').replace('nil', 'None')
         # Convert Lua numeric keys [1] = ... into Python's 1: ... format.
@@ -89,14 +99,39 @@ def extract_lua_table(content, var_name):
         try:
             return ast.literal_eval(py_compatible)
         except Exception as e:
-            print("[WARNING] Failed to parse Lua table:", e)
-    return []
+            print(f"[WARNING] Failed to parse {var_name} table:", e)
+            return {}
+    
+    elif var_name == "LastLogonDB":
+        # For LastLogonDB (string keys with date string values)
+        result = {}
+        # Find all entries like: ["CharacterName"] = "25-04-15 04:26:43",
+        entries = re.findall(r'\["([^"]+)"\]\s*=\s*"([^"]+)"', lua_table)
+        for char_name, timestamp_str in entries:
+            result[char_name] = timestamp_str
+        return result
+    
+    return {}
+
+
 
 # Looks for a line in the Lua file like "ShouldRefresh = true" or "false"
 # and returns the corresponding Python boolean.
 def extract_bool_var(content, var_name):
     match = re.search(rf'{var_name}\s*=\s*(true|false)', content, re.IGNORECASE)
     return match.group(1).lower() == 'true' if match else False
+
+# Updates or inserts a Lua-style boolean assignment (true/false).
+def set_bool_var(content, var_name, value):
+    lua_value = 'true' if value else 'false'
+    pattern = rf'({var_name}\s*=\s*)(true|false)'
+    
+    if re.search(pattern, content, re.IGNORECASE):
+        # Replace existing assignment
+        return re.sub(pattern, rf'\1{lua_value}', content, flags=re.IGNORECASE)
+    else:
+        # Add the variable at the end if not present
+        return content.rstrip() + f'\n{var_name} = {lua_value}\n'
 
 # Replaces the Lua table assigned to `var_name` with new_table_str.
 # Matches:
@@ -107,6 +142,16 @@ def replace_table_in_lua(content, var_name, new_table_str):
     patternSub = re.sub(pattern, rf'\1{new_table_str}', content, flags=re.DOTALL) 
     return patternSub
 
+
+# Replaces the Lua boolean assigned to `var_name` with `true` or `false`.
+def replace_bool_in_lua(content, var_name, value):
+    lua_value = 'true' if value else 'false'
+    pattern = rf'({var_name}\s*=\s*)(true|false)'
+
+    # Use lambda to safely reference the matched group
+    new_content = re.sub(pattern, lambda m: m.group(1) + lua_value, content, flags=re.IGNORECASE)
+    return new_content
+
 # Formats a Python dictionary {index: string} into Lua-style table.
 # Example output:
 # {
@@ -116,14 +161,27 @@ def replace_table_in_lua(content, var_name, new_table_str):
 def format_python_table_as_lua(py_table):
     lines = []
     for index, value in py_table.items():
-        escaped = value.replace('"', '\\"')  # Escape quotes
-        lines.append(f'\t[{index}] = "{escaped}"')
+        if isinstance(index, int):
+            # For numeric indices (DeathLoggerDB)
+            escaped = value.replace('"', '\\"')  # Escape quotes
+            lines.append(f'\t[{index}] = "{escaped}"')
+        else:
+            # For string indices (LastLogonDB)
+            lines.append(f'\t["{index}"] = {value}')
+    return "{\n" + ",\n".join(lines) + "\n}"
+
+# Formats a Python dictionary for LastLogonDB into Lua-style table
+def format_lastlogon_table_as_lua(py_table):
+    lines = []
+    for char_name, timestamp in py_table.items():
+        # Format the timestamp without quotes (as it appears in the file)
+        lines.append(f'\t["{char_name}"] = "{timestamp}"')
     return "{\n" + ",\n".join(lines) + "\n}"
 
 # Extracts the timestamp (as float) from a log entry.
 # Format: "[25-04-08 21:31:26]..."
 def extract_timestamp(log_str):
-    match = re.match(r'\[(\d{2}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]', log_str)
+    match = re.search(r'(\d{2}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', log_str)
     if not match:
         return None
     try:
@@ -155,17 +213,16 @@ def merge_entries(local_entries, remote_entries):
     needsUpdate = False
     next_index = max(merged.keys(), default=0) + 1
 
-    # Merge local [LOG] remote
+    # Merge local to remote
     for log in local_entries.values():
         if not is_duplicate(log, remote_entries):
             merged[next_index] = log
             next_index += 1
-            needsUpdate = True
             needsUpload = True
         # else:
         #     print("[LOG] local found duplicate in remote, not addint it!")
             
-    # Merge remote [LOG] local
+    # Merge remote to local
     next_index = len(local_entries) + 1
     for log in remote_entries.values():
         if not is_duplicate(log, local_entries):
@@ -183,7 +240,6 @@ def merge_entries(local_entries, remote_entries):
     merged_sorted = {i + 1: log for i, (_, log) in enumerate(sorted_items)}
 
     return merged_sorted, needsUpload, needsUpdate
-
 
 
 
@@ -234,13 +290,6 @@ def sync_ready_start_wow():
 
     print("[LOG] Launching Turtle WoW... Please dont close this window while playing!")
 
-# Call this method to create permissions (not called anywhere at the moment)
-def create_permissions(service, file_id):
-    service.permissions().create(
-        fileId=file_id,
-        body=permission,
-        fields='id').execute()
-    
 
 # A check to see if wow process is running
 def is_wow_running():
@@ -251,28 +300,41 @@ def is_wow_running():
 
 
 # SYNC LOOP UPDATE
-
 def sync_loop():
     service = get_drive_service()
     file_id = find_or_create_file(service, FILE_NAME)
     last_modified = None
 
-    # Check if file exists
+    # Check if SavedVariables file exists or we create one
     if not os.path.exists(LOCAL_FILE_PATH):
         print(f"[LOG] File '{LOCAL_FILE_PATH}' does not exist. Creating it...")
         with open(LOCAL_FILE_PATH, 'w', encoding='cp1252') as f:
-            f.write("DeathLoggerDB = { }\n")
+            f.write("DeathLoggerDB = { }\nLastLogonDB = { }\nSyncLoaded = false")
 
     print(f"[LOG] Syncing with online database...")
 
     while True:
         try:
-            # Check if WoW is still running
+
+            global isFirstCheck
+
+            # Check if WoW is still running or we exit
             if isGameRunning and not is_wow_running():
+                
+                # Set SyncLoaded to: false
+                with open(LOCAL_FILE_PATH, 'r') as f:
+                    local_content = f.read()
+
+                local_content = replace_bool_in_lua(local_content, "SyncLoaded", False)
+
+                with open(LOCAL_FILE_PATH, 'w') as f:
+                    f.write(local_content)
+
                 print("[LOG] WoW has exited. Shutting down sync.")
                 break
                 # Exit the sync loop
 
+            #Get stats and see if local file has been modified
             stat = os.stat(LOCAL_FILE_PATH)
             mod_time = stat.st_mtime
 
@@ -280,19 +342,24 @@ def sync_loop():
                 clear_remote_data(service, file_id)
 
             elif last_modified is None or mod_time != last_modified:
-                last_modified = mod_time
-                print("[LOG] Local file change detected.")
+                    
+                if isFirstCheck:
+                    print("[LOG] Doing initial data check...") 
+                    
+                else:
+                    print("[LOG] Local file change detected.")
 
                 with open(LOCAL_FILE_PATH, 'r') as f:
                     local_content = f.read()
 
+               
                 should_refresh = extract_bool_var(local_content, "ShouldRefresh")
                 if should_refresh:
                     print("[LOG] Refreshing local file from database (ShouldRefresh = true)")
                     download_file(service, file_id, FILE_NAME)
                     continue
 
-                if 'DeathLoggerDB' in local_content:
+                if ('DeathLoggerDB' and 'LastLogonDB') in local_content:
                     print("[LOG] Syncing changes...")
 
                     # Step 1: Download remote copy
@@ -300,43 +367,85 @@ def sync_loop():
                     with open(TEMP_REMOTE_COPY, 'r') as f:
                         remote_content = f.read()
 
-                    # Step 2: Extract and merge
-                    local_entries = extract_lua_table(local_content, "DeathLoggerDB")
-                    remote_entries = extract_lua_table(remote_content, "DeathLoggerDB")
+                    # Step 2: Extract and merge DeathLoggerDB
+                    local_deathlog = extract_lua_table(local_content, "DeathLoggerDB")
+                    remote_deathlog = extract_lua_table(remote_content, "DeathLoggerDB")
 
-                    merged_entries, needsUpload, needsUpdate = merge_entries(local_entries, remote_entries)
-                    new_table_str = format_python_table_as_lua(merged_entries)
-                    updated_content = replace_table_in_lua(remote_content, "DeathLoggerDB", new_table_str)
+                    merged_deathlog, needsUpload_deathlog, needsUpdate_deathlog = merge_entries(local_deathlog, remote_deathlog)
+                    
+                    # Step 3: Extract LastLogonDB from both local and remote
+                    local_lastlogon = extract_lua_table(local_content, "LastLogonDB")
+                    remote_lastlogon = extract_lua_table(remote_content, "LastLogonDB")
+                    
+                    # Merge LastLogonDB (one-way from client to server)
+                    merged_lastlogon = dict(remote_lastlogon)
+                    needsUpload_lastlogon = False
+                    
+                    # Update any character entries from local to remote
+                    for character, timestamp in local_lastlogon.items():
+                        if character not in merged_lastlogon or timestamp != merged_lastlogon.get(character, ""):
+                            merged_lastlogon[character] = timestamp
+                            needsUpload_lastlogon = True
+                            print(f"[LOG] Updating timestamp for character: {character}")
+                    
+                        # Step 4: Generate updated content
+                    deathlog_table_str = format_python_table_as_lua(merged_deathlog)
+                    lastlogon_table_str = format_lastlogon_table_as_lua(merged_lastlogon)
+                    
+                    # First update local file with only merged DeathLoggerDB (not LastLogonDB)
+                    local_updated_content = replace_table_in_lua(local_content, "DeathLoggerDB", deathlog_table_str)
 
-                    if needsUpdate:
-                        print("[LOG] New entries detected!")
+                    if isFirstCheck:
+                        local_updated_content = replace_bool_in_lua(local_updated_content, "SyncLoaded", True)
+
+                    # Update remote content with both tables for upload purposes
+                    remote_updated_content = replace_table_in_lua(remote_content, "DeathLoggerDB", deathlog_table_str)
+                    remote_updated_content = replace_table_in_lua(remote_updated_content, "LastLogonDB", lastlogon_table_str)
+                    
+                    needsUpload = needsUpload_deathlog or needsUpload_lastlogon
+                    needsUpdate = needsUpdate_deathlog
+
+                    if needsUpdate or isFirstCheck:
+
+                        if (needsUpdate):
+                            print("[LOG] New DeathLoggerDB entries detected - updating local file!")
+                        else:
+                            print("[LOG] Doing first run sync variable update.")
+
+                        # Only write DeathLoggerDB changes to local file
                         with open(LOCAL_FILE_PATH, 'w') as f:
-                            f.write(updated_content)
+                            f.write(local_updated_content)
+                       
+                    
+                    # Upload if either DeathLoggerDB or LastLogonDB needs updates
+                    if needsUpload:
+                        global shouldNotUpload
+                        if shouldNotUpload:
+                            print("[LOG] Skipped upload.")
+                            if shouldStartGame:
+                                sync_ready_start_wow()
+                            continue
 
-                        if needsUpload:
-                            global shouldNotUpload
-                            if shouldNotUpload:
-                                print("[LOG] Skipped upload.")
-                                return
-
-                            print("[LOG] Uploading to remote database...")
-                            upload_file(service, file_id, LOCAL_FILE_PATH)
-                            print("[LOG] Uploaded merged file to database.")
+                        print("[LOG] Uploading to remote database...")
+                        
+                        # Write the full updated content to temp file for upload
+                        with open(TEMP_REMOTE_COPY, 'w') as f:
+                            f.write(remote_updated_content)
+                            
+                        upload_file(service, file_id, TEMP_REMOTE_COPY)
+                        print("[LOG] Uploaded merged file to database.")
                     else:
                         print("[LOG] No new entries to merge.")
-
-                        if shouldStartGame:
-                            sync_ready_start_wow()
+                    
+                     # Get the new modification time after writing to the file
+                    stat = os.stat(LOCAL_FILE_PATH)
+                    last_modified = stat.st_mtime
+                    
+                    if shouldStartGame:
+                        sync_ready_start_wow()
         except Exception as e:
             print(f"[WARNING] Error: {e}")
 
         time.sleep(2)
-
-
-
-
-
-
 if __name__ == "__main__":
     sync_loop()
-

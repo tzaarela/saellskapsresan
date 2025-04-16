@@ -10,10 +10,13 @@ systemFrame:RegisterEvent("ADDON_LOADED")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_HOSTILE_DEATH")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_SPELL_DAMAGE")
+systemFrame:RegisterEvent("PLAYER_DEAD")
+systemFrame:RegisterEvent("PLAYER_LOGOUT")
 
 -- Initialize UI function (called in ADDON_LOADED)
 InitializeSystem = function()
     DeathLoggerDB = DeathLoggerDB or {}
+    LastLogonDB = LastLogonDB or {}
     DEFAULT_CHAT_FRAME:AddMessage("Sällskapsresan-Mod v0.1 har initierats!", 1, 0.5, 0)
 end
 
@@ -30,6 +33,7 @@ OpenUI = function()
     MainFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     MainFrame:SetWidth(600)
     MainFrame:SetHeight(450)
+    MainFrame:SetFrameStrata("DIALOG")
     MainFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -42,6 +46,9 @@ OpenUI = function()
     MainFrame:RegisterForDrag("LeftButton")
     MainFrame:SetScript("OnDragStart", function() MainFrame:StartMoving() end)
     MainFrame:SetScript("OnDragStop", function() MainFrame:StopMovingOrSizing() end)
+
+   
+
 
     -- === Title ===
     local title = MainFrame:CreateFontString(nil, "OVERLAY")
@@ -89,6 +96,14 @@ OpenUI = function()
     infoText:SetPoint("TOPLEFT", 20, -20)
     infoText:SetText("Välkommen till Sällskapsresan!\n\n Detta är ett addon under konstruktion så förvänta er att det kan strula. \n \n Guildregler:\n\n -Addonet måste alltid vara aktivt när man är online  \n -Dör man får man inte ta samma namn igen \n")
     infoText:SetJustifyH("LEFT")
+
+
+    
+    local logo = StartFrame:CreateTexture(nil, "OVERLAY")
+    logo:SetPoint("BOTTOMLEFT", StartFrame, "BOTTOMLEFT", 20, 20)  -- adjust offsets as needed
+    logo:SetTexture("Interface\\AddOns\\SaellskapsresanMod\\UI\\hardcore.blp")
+    logo:SetWidth(128)
+    logo:SetHeight(128) -- adjust size as needed
 
     -- LOG Frame (your original UI reused)
     LogFrame = CreateFrame("Frame", nil, MainFrame)
@@ -163,10 +178,15 @@ CloseUI = function()
 end
 
 
+
+
+
 -- Update Loop (uncomment below if needed and remove this parenteses)
 -- systemFrame:SetScript("OnUpdate",function(s,e)
 
 -- end);
+
+local deathReportSent = false;
 
 -- Event Handler
 systemFrame:SetScript("OnEvent", function()
@@ -179,8 +199,14 @@ systemFrame:SetScript("OnEvent", function()
     -- Handle all initialization inside addon loaded
     if event == "ADDON_LOADED" and arg1 == "SaellskapsresanMod" and not this.loaded then
 
+        if not SyncLoaded then
+            ShowErrorPopup("Du startade inte spelet med Saellskapsresan.bat! Synkningen kommer inte fungera!");
+        end
+
+        deathReportSent = false;
         this.loaded = true
         InitializeSystem();
+        RecordPlayerLogin()
         
     
     -- If we get hit by creature melee/spell hits. I use this for testing somethings.
@@ -195,30 +221,53 @@ systemFrame:SetScript("OnEvent", function()
         local currentHealth = UnitHealth("player")
 
         -- DEFAULT_CHAT_FRAME:AddMessage("damage: " .. damage .. " previousHealth: " .. currentHealth .. "new health: " .. currentHealth - damage, 1, 0.5, 0)
-
-        ParseKiller(arg1)
-
-        -- if currentHealth - damage <= 125 then
+        
+        -- if (currentHealth < 110) then
+        --     print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
         --     ReportDeath()
+        --     deathReportSent = true
+        --     ReloadUI()
         -- end
 
-        -- If player dies
-    elseif event == "PLAYER_DEAD" then
-        ReportDeath()
+        ParseKiller(arg1)
     end
+
+        -- If player dies
+    if event == "PLAYER_DEAD" and not deathReportSent then
+        print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
+        ReportDeath()
+        deathReportSent = true
+
+        -- This does not seem to trigger. But ALT-F4 seems to save to SavedVariables either way. So maybe not neccesary.
+        ReloadUI()
+    end
+
+    -- if event == "PLAYER_LOGOUT" or "PLAYER_LEAVING_WORLD" then
+    --     SyncLoaded = false;
+    -- end
+    
 end)
 
-local function CreateDeathLogRow(timestamp, zone, name, level, killer)
-    local green = "|cff00ff00"
-    local red = "|cffff0000"
+-- Function to record player login
+RecordPlayerLogin = function()
+    
+    -- Update current characters timestamp
+    LastLogonDB = {}
+    local playerName = UnitName("player")
+    local dateTime = date("%y-%m-%d %H:%M:%S")
+    LastLogonDB[playerName] = dateTime
+end
+
+local function CreateDeathLogRow(timestamp, zone, playerName, classColor, level, killer)
+    local enemyColor = "|cffff0000" -- Red
     local reset = "|r"
 
     local log = string.format(
-        "%s | %s | %s%s%s [Lvl %d] blev dödad av %s%s%s",
+        "%s | %s | %s%s%s [Lvl %d] blev dräpt av %s%s%s",
         timestamp, zone,
-        green, name, reset,
+        classColor, playerName, reset,
         level,
-        red, killer, reset
+        enemyColor, killer, reset
     )
         return log;
 end
@@ -311,23 +360,66 @@ function SendRandomDeathMessage(level, killer)
     SendChatMessage(msg, "GUILD")
 end
 
+-- Utility function to check if a table contains a value
+local function TableContains(t, value)
+    for _, v in ipairs(t) do
+        if v == value then
+            return true
+        end
+    end
+    return false
+end
+
+    
+local classColors = {
+    ["WARRIOR"] = "C79C6E",
+    ["PALADIN"] = "F48CBA",
+    ["HUNTER"]  = "AAD372",
+    ["ROGUE"]   = "FFF468",
+    ["PRIEST"]  = "FFFFFF",
+    ["SHAMAN"]  = "0070DD",
+    ["MAGE"]    = "3FC7EB",
+    ["WARLOCK"] = "8788EE",
+    ["DRUID"]   = "FF7C0A",
+}
+
+function GetColorFromClassName(class)
+    class = string.upper(class) 
+    local hex = classColors[class]
+    if hex then
+        return "|cFF" .. hex
+    else
+        return class
+    end
+end
+
 
 -- Send message and report when dead
 ReportDeath = function()
     local timestamp = date("%y-%m-%d %H:%M:%S")
-            local level = UnitLevel("player") or "??"
-            local playerName = UnitName("player")
-            local zone = GetZoneText()
-            local killer = LastKiller or "en främmande varelse"
-            local deathMessage = CreateDeathLogRow(timestamp, zone,playerName, level, killer);
-            print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
-            
-            table.insert(DeathLoggerDB, deathMessage)
-            
-            -- TODO - Finish print guild message or some kind of dramatic announcment that guild member died 
-            -- SendChatMessage(CreateRandomGuildDeathMessage(level, killer))
-            -- DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
+    local level = UnitLevel("player") or "??"
+    local playerName = UnitName("player")
+    local zone = GetZoneText()
+    local killer = LastKiller or "en främmande varelse"
+
+    local playerClass = UnitClass("player")
+    local classColor = GetColorFromClassName(playerClass)
+    print("playerClass: " .. playerClass .. " classColor: " .. classColor)
+    
+    local deathMessage = CreateDeathLogRow(timestamp, zone, playerName, classColor, level, killer);
+
+    print("[Sällskapsresan] " .. deathMessage)
+
+    if not TableContains(DeathLoggerDB, deathMessage) then
+        table.insert(DeathLoggerDB, deathMessage)
+    end
+    
+    -- TODO - Finish print guild message or some kind of dramatic announcment that guild member died 
+    -- SendChatMessage(CreateRandomGuildDeathMessage(level, killer))
+    -- DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
 end
+
+
 
 function RefreshDeathLog()
     -- GenerateDeathLog() -- Refresh the UI
@@ -343,7 +435,7 @@ function GenerateDeathLog()
     local deathFontStrings = {}
     -- Ensure the deathFontStrings table exists
     if not deathFontStrings then
-        deathFontStrings = {}  -- Initialize the table if it doesn't exist
+        deathFontStrings = {}  -- Initialize the table if it doesnt exist
     end
 
     -- Clear existing font strings from the UI
@@ -365,7 +457,7 @@ function GenerateDeathLog()
     local fontFlags = nil
 
     -- Rebuild the UI from current DB
-    print("[Sällskapsresan] Uppdaterar " .. tostring(GetTableLength(DeathLoggerDB)) .. "st dödsfall i dödslistan" );
+    -- print("[Sällskapsresan] Uppdaterar " .. tostring(GetTableLength(DeathLoggerDB)) .. "st dödsfall i dödslistan" );
     
     for i, entry in ipairs(DeathLoggerDB or {}) do
         local fontString = logList:CreateFontString("deathEntry"..i, "OVERLAY")
@@ -452,9 +544,45 @@ function GetFirstNumberInString(text)
     return nil
 end
 
+function ShowErrorPopup(message)
+    StaticPopupDialogs["SALLSKAPSRESAN_ERROR"] = {
+        text = message,
+        button1 = "OK",
+        timeout = 0,
+        whileDead = 1,
+        hideOnEscape = 1,
+        preferredIndex = 3,
+    }
+    StaticPopup_Show("SALLSKAPSRESAN_ERROR")
+end
+
+
 -- slash Commands
 SLASH_SSR1 = "/sr"
 SLASH_SSR2 = "/ssr"
 SLASH_SSR3 = "/sällskapsresan"
 SLASH_SSR4 = "/saellskapsresan"
 SlashCmdList["SSR"] = OpenUI
+
+
+local LDB = LibStub("LibDataBroker-1.1")
+local icon = LibStub("LibDBIcon-1.0")
+
+Saellskaspresan = {}
+Saellskaspresan.dataObject = LDB:NewDataObject("Saellskapsresan", {
+    type = "data source",
+    text = "Saellskapsresan",
+    icon = "Interface\\AddOns\\SaellskapsresanMod\\UI\\addonlogo.tga",
+    OnClick = function(self, button)
+        OpenUI();
+    end,
+    OnTooltipShow = function(tooltip)
+        tooltip:AddLine("Saellskapsresan")
+        tooltip:AddLine("Click to open!")
+    end,
+})
+
+SSR_DB = SSR_DB or { minimap = { hide = false } }
+
+icon:Register("Saellskapsresan", Saellskaspresan.dataObject, SSR_DB.minimap)
+

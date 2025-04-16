@@ -20,6 +20,8 @@
     "Lua.diagnostics.globals": [
         "SlashCmdList",
         "DEFAULT_CHAT_FRAME",
-        "ReloadUI"
+        "ReloadUI",
+        "class",
+        "StaticPopupDialogs"
     ]
 }
