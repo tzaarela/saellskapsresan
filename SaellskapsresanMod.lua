@@ -10,6 +10,7 @@ systemFrame:RegisterEvent("ADDON_LOADED")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_HOSTILE_DEATH")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_SPELL_DAMAGE")
+systemFrame:RegisterEvent("PLAYER_DEAD")
 
 -- Initialize UI function (called in ADDON_LOADED)
 InitializeSystem = function()
@@ -43,6 +44,9 @@ OpenUI = function()
     MainFrame:RegisterForDrag("LeftButton")
     MainFrame:SetScript("OnDragStart", function() MainFrame:StartMoving() end)
     MainFrame:SetScript("OnDragStop", function() MainFrame:StopMovingOrSizing() end)
+
+   
+
 
     -- === Title ===
     local title = MainFrame:CreateFontString(nil, "OVERLAY")
@@ -90,6 +94,14 @@ OpenUI = function()
     infoText:SetPoint("TOPLEFT", 20, -20)
     infoText:SetText("Välkommen till Sällskapsresan!\n\n Detta är ett addon under konstruktion så förvänta er att det kan strula. \n \n Guildregler:\n\n -Addonet måste alltid vara aktivt när man är online  \n -Dör man får man inte ta samma namn igen \n")
     infoText:SetJustifyH("LEFT")
+
+
+    
+    local logo = StartFrame:CreateTexture(nil, "OVERLAY")
+    logo:SetPoint("BOTTOMLEFT", StartFrame, "BOTTOMLEFT", 20, 20)  -- adjust offsets as needed
+    logo:SetTexture("Interface\\AddOns\\SaellskapsresanMod\\UI\\hardcore.blp")
+    logo:SetWidth(128)
+    logo:SetHeight(128) -- adjust size as needed
 
     -- LOG Frame (your original UI reused)
     LogFrame = CreateFrame("Frame", nil, MainFrame)
@@ -481,67 +493,24 @@ SLASH_SSR4 = "/saellskapsresan"
 SlashCmdList["SSR"] = OpenUI
 
 
-local addonName = "SaellskapsresanMod"
-local SSR = {}
-
--- Libs
 local LDB = LibStub("LibDataBroker-1.1")
-local DBIcon = LibStub("LibDBIcon-1.0")
+local icon = LibStub("LibDBIcon-1.0")
 
--- Defaults
-local defaultDB = {
-    minimap = {
-        hide = false,
-    },
-}
-
--- Create the LDB object
-local SSR_LDB = LDB:NewDataObject("SSR", {
+Saellskaspresan = {}
+Saellskaspresan.dataObject = LDB:NewDataObject("Saellskapsresan", {
     type = "data source",
-    text = "Saellskapsresan!",
-    icon = "Interface\\Icons\\INV_Chest_Cloth_17",
-    OnClick = function()
-        print("OPEN Saellskapsresan")
-        print("/ssr")
+    text = "Saellskapsresan",
+    icon = "Interface\\AddOns\\SaellskapsresanMod\\UI\\addonlogo.tga",
+    OnClick = function(self, button)
+        OpenUI();
     end,
     OnTooltipShow = function(tooltip)
         tooltip:AddLine("Saellskapsresan")
-        tooltip:AddLine("Click topen!", 1, 1, 1)
+        tooltip:AddLine("Click to open!")
     end,
 })
 
--- Initialize SavedVariables and icon
-function SSR:Initialize()
-    -- Fallback to default if needed
-    SSR_DB = SSR_DB or {}
-    for k, v in pairs(defaultDB) do
-        if type(SSR_DB[k]) ~= "table" then
-            SSR_DB[k] = {}
-        end
-        for sk, sv in pairs(v) do
-            if SSR_DB[k][sk] == nil then
-                SSR_DB[k][sk] = sv
-            end
-        end
-    end
+SSR_DB = SSR_DB or { minimap = { hide = false } }
 
-    DBIcon:Register("SSR", SSR_LDB, SSR_DB.minimap)
-end
+icon:Register("Saellskapsresan", Saellskaspresan.dataObject, SSR_DB.minimap)
 
--- Create event listener
-local frame = CreateFrame("Frame")
-frame:SetScript("OnEvent", function()
-    if event == "ADDON_LOADED" and arg1 == addonName then
-        SSR:Initialize()
-    end
-end)
-
--- Optional: Toggle minimap icon manually
-function SSR:ToggleMinimapIcon()
-    SSR_DB.minimap.hide = not SSR_DB.minimap.hide
-    if SSR_DB.minimap.hide then
-        DBIcon:Hide("SSR")
-    else
-        DBIcon:Show("SSR")
-    end
-end
