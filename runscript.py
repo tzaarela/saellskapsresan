@@ -30,6 +30,7 @@ parser = argparse.ArgumentParser(description="Sync DeathLoggerDB with Google Dri
 parser.add_argument('-reset', action='store_true', help="Clear the remote DeathLoggerDB file.")
 parser.add_argument('-noupload', action='store_true', help="Dont upload, only download")
 parser.add_argument('-character', type=str, help="Character name for LastLogonDB update")
+parser.add_argument('-character', type=str, help="Character name for LastLogonDB update")
 args = parser.parse_args()
 
 # Global variables
@@ -372,6 +373,9 @@ def sync_loop():
                     with open(TEMP_REMOTE_COPY, 'r') as f:
                         remote_content = f.read()
 
+                    # Step 2: Extract and merge DeathLoggerDB
+                    local_deathlog = extract_lua_table(local_content, "DeathLoggerDB")
+                    remote_deathlog = extract_lua_table(remote_content, "DeathLoggerDB")
                     # Step 2: Extract and merge DeathLoggerDB
                     local_deathlog = extract_lua_table(local_content, "DeathLoggerDB")
                     remote_deathlog = extract_lua_table(remote_content, "DeathLoggerDB")
