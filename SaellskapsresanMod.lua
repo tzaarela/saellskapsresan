@@ -10,10 +10,12 @@ systemFrame:RegisterEvent("ADDON_LOADED")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_HOSTILE_DEATH")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_SPELL_DAMAGE")
+systemFrame:RegisterEvent("PLAYER_DEAD")
 
 -- Initialize UI function (called in ADDON_LOADED)
 InitializeSystem = function()
     DeathLoggerDB = DeathLoggerDB or {}
+    LastLogonDB = LastLogonDB or {}
     DEFAULT_CHAT_FRAME:AddMessage("Sällskapsresan-Mod v0.1 har initierats!", 1, 0.5, 0)
 end
 
@@ -42,6 +44,9 @@ OpenUI = function()
     MainFrame:RegisterForDrag("LeftButton")
     MainFrame:SetScript("OnDragStart", function() MainFrame:StartMoving() end)
     MainFrame:SetScript("OnDragStop", function() MainFrame:StopMovingOrSizing() end)
+
+   
+
 
     -- === Title ===
     local title = MainFrame:CreateFontString(nil, "OVERLAY")
@@ -89,6 +94,14 @@ OpenUI = function()
     infoText:SetPoint("TOPLEFT", 20, -20)
     infoText:SetText("Välkommen till Sällskapsresan!\n\n Detta är ett addon under konstruktion så förvänta er att det kan strula. \n \n Guildregler:\n\n -Addonet måste alltid vara aktivt när man är online  \n -Dör man får man inte ta samma namn igen \n")
     infoText:SetJustifyH("LEFT")
+
+
+    
+    local logo = StartFrame:CreateTexture(nil, "OVERLAY")
+    logo:SetPoint("BOTTOMLEFT", StartFrame, "BOTTOMLEFT", 20, 20)  -- adjust offsets as needed
+    logo:SetTexture("Interface\\AddOns\\SaellskapsresanMod\\UI\\hardcore.blp")
+    logo:SetWidth(128)
+    logo:SetHeight(128) -- adjust size as needed
 
     -- LOG Frame (your original UI reused)
     LogFrame = CreateFrame("Frame", nil, MainFrame)
@@ -141,7 +154,7 @@ OpenUI = function()
     close:SetText("Stäng")
     close:SetScript("OnClick", function() MainFrame:Hide() end)
 
-    -- === Reset Button (moved from uiFrame) ===
+    -- === Reset Button ===
     local refresh = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
     refresh:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -120, 20)
     refresh:SetWidth(90)
@@ -163,6 +176,9 @@ CloseUI = function()
 end
 
 
+
+
+
 -- Update Loop (uncomment below if needed and remove this parenteses)
 -- systemFrame:SetScript("OnUpdate",function(s,e)
 
@@ -181,6 +197,7 @@ systemFrame:SetScript("OnEvent", function()
 
         this.loaded = true
         InitializeSystem();
+        RecordPlayerLogin()
         
     
     -- If we get hit by creature melee/spell hits. I use this for testing somethings.
@@ -194,19 +211,34 @@ systemFrame:SetScript("OnEvent", function()
 
         local currentHealth = UnitHealth("player")
 
-        DEFAULT_CHAT_FRAME:AddMessage("damage: " .. damage .. " previousHealth: " .. currentHealth .. "new health: " .. currentHealth - damage, 1, 0.5, 0)
+        -- DEFAULT_CHAT_FRAME:AddMessage("damage: " .. damage .. " previousHealth: " .. currentHealth .. "new health: " .. currentHealth - damage, 1, 0.5, 0)
 
         ParseKiller(arg1)
 
-        if currentHealth - damage <= 125 then
-            ReportDeath()
+        if currentHealth - damage <= 0 then
+            print("[Sällskapsresan] Du ska ha dött vid det här laget.")
         end
+    end
 
         -- If player dies
-    elseif event == "PLAYER_DEAD" then
+    if event == "PLAYER_DEAD" then
+        print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
         ReportDeath()
     end
 end)
+
+
+-- Function to record player login
+RecordPlayerLogin = function()
+    if not LastLogonDB then
+        LastLogonDB = {}
+    end
+
+-- Update current characters timestamp
+    local playerName = UnitName("player")
+    local dateTime = date("%y-%m-%d %H:%M:%S")
+    LastLogonDB[playerName] = dateTime
+end
 
 local function CreateDeathLogRow(timestamp, zone, name, level, killer)
     local green = "|cff00ff00"
@@ -315,24 +347,27 @@ end
 -- Send message and report when dead
 ReportDeath = function()
     local timestamp = date("%y-%m-%d %H:%M:%S")
-            local level = UnitLevel("player") or "??"
-            local playerName = UnitName("player")
-            local zone = GetZoneText()
-            local killer = LastKiller or "en främmande varelse"
-            local deathMessage = CreateDeathLogRow(timestamp, zone,playerName, level, killer);
-            DEFAULT_CHAT_FRAME:AddMessage("Du dog!")
-            
-            table.insert(DeathLoggerDB, deathMessage)
-            DeathLoggerExport = table.concat(DeathLoggerDB, "\n")
-            
-            SendChatMessage(CreateRandomGuildDeathMessage(level, killer))
-            DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
+    local level = UnitLevel("player") or "??"
+    local playerName = UnitName("player")
+    local zone = GetZoneText()
+    local killer = LastKiller or "en främmande varelse"
+    local deathMessage = CreateDeathLogRow(timestamp, zone,playerName, level, killer);
+
+    print("[Sällskapsresan] " .. deathMessage)
+    
+    table.insert(DeathLoggerDB, deathMessage)
+    
+    -- TODO - Finish print guild message or some kind of dramatic announcment that guild member died 
+    -- SendChatMessage(CreateRandomGuildDeathMessage(level, killer))
+    -- DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
 end
 
 function RefreshDeathLog()
-    DeathLoggerDB = {}
-    print("Death log cleared!")
-    GenerateDeathLog() -- Refresh the UI
+    -- GenerateDeathLog() -- Refresh the UI
+    DeathLoggerDB = { }
+    ReloadUI()
+    print("[Sällskapsresan] Uppdaterat dödsloggen.")
+    OpenUI()
 end
 
 -- Table to store references to the font strings so we can clear them later
@@ -341,7 +376,7 @@ function GenerateDeathLog()
     local deathFontStrings = {}
     -- Ensure the deathFontStrings table exists
     if not deathFontStrings then
-        deathFontStrings = {}  -- Initialize the table if it doesn't exist
+        deathFontStrings = {}  -- Initialize the table if it doesnt exist
     end
 
     -- Clear existing font strings from the UI
@@ -363,6 +398,8 @@ function GenerateDeathLog()
     local fontFlags = nil
 
     -- Rebuild the UI from current DB
+    print("[Sällskapsresan] Uppdaterar " .. tostring(GetTableLength(DeathLoggerDB)) .. "st dödsfall i dödslistan" );
+    
     for i, entry in ipairs(DeathLoggerDB or {}) do
         local fontString = logList:CreateFontString("deathEntry"..i, "OVERLAY")
         fontString:SetFont(fontPath, fontSize, fontFlags)
@@ -371,6 +408,14 @@ function GenerateDeathLog()
         fontString:Show()
         table.insert(deathFontStrings, fontString) -- Track it<<<<<>
     end
+end
+
+function GetTableLength(t)
+    local count = 0
+    for _ in pairs(t) do
+        count = count + 1
+    end
+    return count
 end
 
 function ParseKillerName(msg)
@@ -430,16 +475,15 @@ function GetFirstNumberInString(text)
                 end
             end
 
-            DEFAULT_CHAT_FRAME:AddMessage("Converted to DamageNumber: " .. numberStr)
+            -- DEFAULT_CHAT_FRAME:AddMessage("Converted to DamageNumber: " .. numberStr)
             return tonumber(numberStr)
         end
     end
 
     -- DEBUG: Show that nothing was found
-    DEFAULT_CHAT_FRAME:AddMessage("No DamageNumber found in: " .. text)
+    -- DEFAULT_CHAT_FRAME:AddMessage("No DamageNumber found in: " .. text)
     return nil
 end
-
 
 -- slash Commands
 SLASH_SSR1 = "/sr"
@@ -447,3 +491,26 @@ SLASH_SSR2 = "/ssr"
 SLASH_SSR3 = "/sällskapsresan"
 SLASH_SSR4 = "/saellskapsresan"
 SlashCmdList["SSR"] = OpenUI
+
+
+local LDB = LibStub("LibDataBroker-1.1")
+local icon = LibStub("LibDBIcon-1.0")
+
+Saellskaspresan = {}
+Saellskaspresan.dataObject = LDB:NewDataObject("Saellskapsresan", {
+    type = "data source",
+    text = "Saellskapsresan",
+    icon = "Interface\\AddOns\\SaellskapsresanMod\\UI\\addonlogo.tga",
+    OnClick = function(self, button)
+        OpenUI();
+    end,
+    OnTooltipShow = function(tooltip)
+        tooltip:AddLine("Saellskapsresan")
+        tooltip:AddLine("Click to open!")
+    end,
+})
+
+SSR_DB = SSR_DB or { minimap = { hide = false } }
+
+icon:Register("Saellskapsresan", Saellskaspresan.dataObject, SSR_DB.minimap)
+

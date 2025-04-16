@@ -5,6 +5,17 @@
 ## Notes: Mod for sällskapsresan
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
-## SavedVariables: DeathLoggerDB,DeathLoggerExport
+## SavedVariables: DeathLoggerDB, LastLogonDB, SSR_DB
+## OptionalDeps: LibStub, CallbackHandler-1.0, LibDataBroker-1.1, AceCore-3.0, AceHook-3.0, LibDBIcon-1.0
+
+#Core files
+libs\LibStub\LibStub.lua
+libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+libs\AceCore-3.0\AceCore-3.0.lua
+libs\AceHook-3.0\AceHook-3.0.lua
+libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 SaellskapsresanMod.lua
-SaellskapresanModForm.xml
+
+# UI Files
+UI\\hardcore.blp

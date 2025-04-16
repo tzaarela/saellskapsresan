@@ -47,8 +47,28 @@ echo Python found at: !PYTHON_EXE!
 
 echo Installing required packages...
 "!PYTHON_EXE!" -m pip install --upgrade pip
-"!PYTHON_EXE!" -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2
+"!PYTHON_EXE!" -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 psutil
+
+REM === COPY THE BATCH FILE ===
+call :copy_batch_file
 
 echo Saellskapsresan Mod installed successfully.
-
 pause
+exit /b
+
+:copy_batch_file
+echo Copying Saellskapsresan.bat to turtle-wow folder...
+
+set "SRC_FILE=%~dp0Saellskapsresan.bat"
+set "DEST_DIR=%~dp0..\..\..\"
+
+copy /Y "%SRC_FILE%" "%DEST_DIR%"
+if %ERRORLEVEL% EQU 0 (
+    echo File copied successfully to: %DEST_DIR%
+) else (
+    echo Failed to copy file from: %SRC_FILE% to %DEST_DIR%
+    pause
+    exit /b 1
+)
+
+goto :eof
