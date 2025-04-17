@@ -164,6 +164,14 @@ OpenUI = function()
     refresh:SetText("Refresh")
     refresh:SetScript("OnClick", RefreshDeathLog)
 
+    -- === Reset Button ===
+    local debugTest = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
+    debugTest:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -220, 20)
+    debugTest:SetWidth(90)
+    debugTest:SetHeight(25)
+    debugTest:SetText("Debug")
+    debugTest:SetScript("OnClick", GetProfessionsBySkill)
+
     -- === Generate Death Log Data ===
     GenerateDeathLog()
 
@@ -256,6 +264,44 @@ RecordPlayerLogin = function()
     local playerName = UnitName("player")
     local dateTime = date("%y-%m-%d %H:%M:%S")
     LastLogonDB[playerName] = dateTime
+end
+
+-- Get profession info using skill API
+function GetProfessionsBySkill()
+    local professions = {}
+    
+    -- Loop through all skills
+    for i = 1, GetNumSkillLines() do
+        local skillName, isHeader, _, skillRank, _, _, maxRank = GetSkillLineInfo(i)
+        
+        -- If not a header and is a profession
+        if not isHeader and IsProfession(skillName) then
+            professions[skillName] = {
+                skillRank = skillRank,
+                maxRank = maxRank
+            }
+            print(skillName .. ": " .. skillRank .. "/" .. maxRank)
+        end
+    end
+    
+    return professions
+end
+
+-- Helper function to determine if a skill is a profession
+function IsProfession(skillName)
+    local professionList = {
+        "Alchemy", "Blacksmithing", "Enchanting", "Engineering",
+        "Herbalism", "Leatherworking", "Mining", "Skinning",
+        "Tailoring", "Cooking", "First Aid", "Fishing"
+    }
+    
+    for _, profession in ipairs(professionList) do
+        if skillName == profession then
+            return true
+        end
+    end
+    
+    return false
 end
 
 local function CreateDeathLogRow(timestamp, zone, playerName, classColor, level, killer)
