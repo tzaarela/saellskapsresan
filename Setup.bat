@@ -78,29 +78,30 @@ echo Installing required Python packages...
 "%PYTHON_EXE%" -m pip install --upgrade pip
 "%PYTHON_EXE%" -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 psutil
 
-REM === STEP 3: Copy launcher script ===
-set "SRC_FILE=%~dp0Saellskapsresan.exe"
-set "DEST_DIR=%~dp0..\..\..\"
+:: Get the current directory (SaellskapsresanMod)
+set "CURRENT_DIR=%~dp0"
+set "BAT_FILE=%CURRENT_DIR%Saellskapsresan.bat"
+set "ICON_FILE=%CURRENT_DIR%UI\addonlogo.ico"
+set "SHORTCUT_PATH=%CURRENT_DIR%..\..\..\Saellskapsresan.lnk"
 
-if not exist "%SRC_FILE%" (
-    echo Source file not found: %SRC_FILE%
-    pause
-    exit /b 1
-)
+:: Create VBScript to generate the shortcut
+echo Set oWS = WScript.CreateObject("WScript.Shell") > "%TEMP%\CreateShortcut.vbs"
+echo sLinkFile = "%SHORTCUT_PATH%" >> "%TEMP%\CreateShortcut.vbs"
+echo Set oLink = oWS.CreateShortcut(sLinkFile) >> "%TEMP%\CreateShortcut.vbs"
+echo oLink.TargetPath = "%BAT_FILE%" >> "%TEMP%\CreateShortcut.vbs"
+echo oLink.IconLocation = "%ICON_FILE%, 0" >> "%TEMP%\CreateShortcut.vbs"
+echo oLink.WorkingDirectory = "%CURRENT_DIR%" >> "%TEMP%\CreateShortcut.vbs"
+echo oLink.Save >> "%TEMP%\CreateShortcut.vbs"
 
-copy /Y "%SRC_FILE%" "%DEST_DIR%" 2>nul
-if %ERRORLEVEL% NEQ 0 (
-    mkdir "%DEST_DIR%" 2>nul
-    copy /Y "%SRC_FILE%" "%DEST_DIR%" 2>nul
-    if %ERRORLEVEL% NEQ 0 (
-        echo Failed to copy file to destination.
-        pause
-        exit /b 1
-    )
-)
+:: Run the VBScript
+cscript //nologo "%TEMP%\CreateShortcut.vbs"
 
-REM === Remove the original file after copying ===
-del "%SRC_FILE%" 2>nul
+:: Clean up
+del "%TEMP%\CreateShortcut.vbs"
+
+echo Shortcut created at: %SHORTCUT_PATH%
+echo Pointing to: %BAT_FILE%
+echo With icon from: %ICON_FILE%
 
 echo Saellskapsresan Mod installed successfully!
 pause
