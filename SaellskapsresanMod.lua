@@ -3,7 +3,6 @@ local addonVersion = "0.1";
 
 -- Register frames
 local systemFrame = CreateFrame("Frame", "SaellskapsresanSystemFrame")
-local logList = CreateFrame("Frame", "SaellskapsresanModFrame", UIParent)
 
 --Register Events
 systemFrame:RegisterEvent("ADDON_LOADED")
@@ -12,16 +11,20 @@ systemFrame:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
 systemFrame:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_SPELL_DAMAGE")
 systemFrame:RegisterEvent("PLAYER_DEAD")
 systemFrame:RegisterEvent("PLAYER_LOGOUT")
+systemFrame:RegisterEvent("PLAYER_LOGIN")
+systemFrame:RegisterEvent("SKILL_LINES_CHANGED")
 
 -- Initialize UI function (called in ADDON_LOADED)
 InitializeSystem = function()
     DeathLoggerDB = DeathLoggerDB or {}
     LastLogonDB = LastLogonDB or {}
+    SyncLoaded = SyncLoaded or false
+    CharacterProfessionsDB = CharacterProfessionsDB or {}
     DEFAULT_CHAT_FRAME:AddMessage("Sällskapsresan-Mod v0.1 har initierats!", 1, 0.5, 0)
 end
 
 -- UI Creation 
-local MainFrame, StartFrame, LogFrame, StatsFrame
+local MainFrame, StartFrame, DeathLogFrame, StatsFrame, ProfessionsFrame, scrollChild, logList
 
 OpenUI = function()
     if MainFrame and MainFrame:IsShown() then
@@ -38,17 +41,15 @@ OpenUI = function()
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 32, edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
     })
+    MainFrame:SetAlpha(1)
     MainFrame:EnableMouse(true)
     MainFrame:SetMovable(true)
     MainFrame:SetUserPlaced(true)
     MainFrame:RegisterForDrag("LeftButton")
     MainFrame:SetScript("OnDragStart", function() MainFrame:StartMoving() end)
     MainFrame:SetScript("OnDragStop", function() MainFrame:StopMovingOrSizing() end)
-
-   
-
 
     -- === Title ===
     local title = MainFrame:CreateFontString(nil, "OVERLAY")
@@ -70,8 +71,9 @@ OpenUI = function()
     -- === Subframe Toggle Logic ===
     local function ShowFrame(frame)
         StartFrame:Hide()
-        LogFrame:Hide()
+        DeathLogFrame:Hide()
         StatsFrame:Hide()
+        ProfessionsFrame:Hide()
         frame:Show()
     end
 
@@ -80,7 +82,6 @@ OpenUI = function()
     -- START Frame
     StartFrame = CreateFrame("Frame", nil, MainFrame)
     StartFrame:SetAllPoints(MainFrame)
-
     StartFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -96,8 +97,6 @@ OpenUI = function()
     infoText:SetPoint("TOPLEFT", 20, -20)
     infoText:SetText("Välkommen till Sällskapsresan!\n\n Detta är ett addon under konstruktion så förvänta er att det kan strula. \n \n Guildregler:\n\n -Addonet måste alltid vara aktivt när man är online  \n -Dör man får man inte ta samma namn igen \n")
     infoText:SetJustifyH("LEFT")
-
-
     
     local logo = StartFrame:CreateTexture(nil, "OVERLAY")
     logo:SetPoint("BOTTOMLEFT", StartFrame, "BOTTOMLEFT", 20, 20)  -- adjust offsets as needed
@@ -105,27 +104,28 @@ OpenUI = function()
     logo:SetWidth(128)
     logo:SetHeight(128) -- adjust size as needed
 
-    -- LOG Frame (your original UI reused)
-    LogFrame = CreateFrame("Frame", nil, MainFrame)
-    LogFrame:SetAllPoints(MainFrame)
-    LogFrame:SetBackdrop({
+    -- Deathlog Frame (your original UI reused)
+    DeathLogFrame = CreateFrame("Frame", nil, MainFrame)
+    DeathLogFrame:SetAllPoints(MainFrame)
+    DeathLogFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
     })
-    LogFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
-    LogFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
-    LogFrame:Hide()
+    DeathLogFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
+    DeathLogFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
+    DeathLogFrame:Hide()
 
     -- Move existing logList content into LogFrame
-    logList:SetParent(LogFrame)
+    logList = CreateFrame("Frame", nil, UIParent)
+    logList:SetParent(DeathLogFrame)
     logList:ClearAllPoints()
-    logList:SetPoint("TOPLEFT", LogFrame, "TOPLEFT", 20, -20)
+    logList:SetPoint("TOPLEFT", DeathLogFrame, "TOPLEFT", 20, -20)
     logList:SetWidth(550)
     logList:SetHeight(340)
 
-    -- STATS Frame
+    -- Stats Frame
     StatsFrame = CreateFrame("Frame", nil, MainFrame)
     StatsFrame:SetAllPoints(MainFrame)
     StatsFrame:SetBackdrop({
@@ -143,10 +143,51 @@ OpenUI = function()
     statsText:SetPoint("TOPLEFT", 20, -20)
     statsText:SetText("Under konstruktion, återkom senare.")
 
+    -- Professions Frame
+    ProfessionsFrame = CreateFrame("Frame", nil, MainFrame)
+    ProfessionsFrame:SetAllPoints(MainFrame)
+    ProfessionsFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    ProfessionsFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
+    ProfessionsFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
+    ProfessionsFrame:Hide()
+
+    local title = ProfessionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", ProfessionsFrame, "TOP", 0, -15)
+    title:SetText("Character Professions")
+
+    -- Create scrollframe for the table
+    local scrollFrame = CreateFrame("ScrollFrame", "ProfessionsScrollFrame", ProfessionsFrame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", ProfessionsFrame, "TOPLEFT", 20, -40)
+    scrollFrame:SetPoint("BOTTOMRIGHT", ProfessionsFrame, "BOTTOMRIGHT", -35, 20)
+
+    -- Create the scroll child frame to contain the table
+    scrollChild = CreateFrame("Frame", "ProfessionsScrollChild")
+    scrollChild:SetWidth(scrollFrame:GetWidth())
+    scrollChild:SetHeight(500)
+    -- Add a visible background to scrollChild
+    scrollChild:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    scrollChild:SetBackdropColor(1, 0, 0, 0.3) -- Red tint to make it visible
+    scrollChild:Show()
+
+    -- After creating the scrollChild
+    scrollFrame:SetScrollChild(scrollChild)
+    print("Scroll child set:", tostring((scrollFrame:GetScrollChild() == scrollChild)))
+
     -- === Navigation Buttons Hookup ===
     CreateNavButton("StartBtn", "Start", 20, function() ShowFrame(StartFrame) end)
-    CreateNavButton("LogBtn", "Dödslogg", 150, function() ShowFrame(LogFrame) end)
+    CreateNavButton("LogBtn", "Dödslogg", 150, function() ShowFrame(DeathLogFrame) end)
     CreateNavButton("StatsBtn", "Statistik", 280, function() ShowFrame(StatsFrame) end)
+    CreateNavButton("ProfessionsBtn", "Yrken", 410, function() ShowFrame(ProfessionsFrame) end)
 
     -- === Close Button ===
     local close = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
@@ -161,7 +202,7 @@ OpenUI = function()
     refresh:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -120, 20)
     refresh:SetWidth(90)
     refresh:SetHeight(25)
-    refresh:SetText("Refresh")
+    refresh:SetText("Ladda Om")
     refresh:SetScript("OnClick", RefreshDeathLog)
 
     -- === Reset Button ===
@@ -170,7 +211,7 @@ OpenUI = function()
     debugTest:SetWidth(90)
     debugTest:SetHeight(25)
     debugTest:SetText("Debug")
-    debugTest:SetScript("OnClick", GetProfessionsAsTableRow)
+    debugTest:SetScript("OnClick", PopulateProfessionsTable)
 
     -- === Generate Death Log Data ===
     GenerateDeathLog()
@@ -185,18 +226,15 @@ CloseUI = function()
     end
 end
 
-
-
-
-
 -- Update Loop (uncomment below if needed and remove this parenteses)
 -- systemFrame:SetScript("OnUpdate",function(s,e)
 
 -- end);
 
-local deathReportSent = false;
 
 -- Event Handler
+local deathReportSent = false;
+
 systemFrame:SetScript("OnEvent", function()
 
     -- Uncomment to test all events
@@ -215,8 +253,16 @@ systemFrame:SetScript("OnEvent", function()
         this.loaded = true
         InitializeSystem();
         RecordPlayerLogin()
+   
+    elseif event == "SKILL_LINES_CHANGED" then
+        -- Update when skills change
+        SetCharacterProfessions()
         
-    
+        -- Update table if frame is visible
+        if ProfessionsFrame and ProfessionsFrame:IsVisible() then
+            PopulateProfessionsTable()
+        end
+
     -- If we get hit by creature melee/spell hits. I use this for testing somethings.
     elseif event == "CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS" or event == "CHAT_MSG_COMBAT_CREATURE_VS_SELF_SPELL_DAMAGE" then
 
@@ -266,8 +312,127 @@ RecordPlayerLogin = function()
     LastLogonDB[playerName] = dateTime
 end
 
+function PopulateProfessionsTable()
+    print("Populating professions table")
+    
+    -- Clear previous entries
+    local children = { scrollChild:GetChildren() }
+    for _, child in ipairs(children) do
+        child:Hide()
+        child:SetParent(nil)
+    end
+    
+    -- Add a single test label directly to ProfessionsFrame to see if that works
+    local testLabel = ProfessionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    testLabel:SetPoint("CENTER", ProfessionsFrame, "CENTER", 0, 0)
+    testLabel:SetText("TEST LABEL - SHOULD BE VISIBLE")
+    print("Test label added")
+    
+    -- Now try to add something to scrollChild
+    local scrollTest = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    scrollTest:SetPoint("TOP", scrollChild, "TOP", 0, 0)
+    scrollTest:SetText("SCROLL TEST")
+    print("Scroll test label added")
+    
+    
+    print("ScrollChild dimensions set:", scrollChild:GetWidth(), scrollChild:GetHeight())
+end
+
+-- Function to populate the table with all characters' profession data
+function PopulateProfessionsTables()
+    -- Clear previous entries
+    local children = { scrollChild:GetChildren() }
+    for _, child in ipairs(children) do
+        child:Hide()
+        child:SetParent(nil)
+    end
+    
+    -- Table header
+    local headerRow = CreateFrame("Frame", nil, scrollChild) -- Changed from ProfessionsFrame to scrollChild
+    headerRow:SetHeight(25)
+    headerRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, 0)
+    headerRow:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 0, 0)
+    
+    local characterHeader = headerRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    characterHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 5, 0)
+    characterHeader:SetText("Character")
+    
+    local professionsHeader = headerRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    professionsHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 120, 0)
+    professionsHeader:SetText("Professions")
+    
+    -- Table rows
+    local yOffset = -25
+    local rowHeight = 20
+    
+    local professionsData = {}
+
+    if CharacterProfessionsDB then
+        for character, profs in pairs(CharacterProfessionsDB) do
+            professionsData[character] = profs
+        end
+    end
+
+    for character, professions in pairs(professionsData) do
+        local row = CreateFrame("Frame", nil, scrollChild)
+        row:SetHeight(rowHeight)
+        row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, yOffset)
+        row:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 0, yOffset)
+        
+        -- Add highlight on mouseover
+        row:SetScript("OnEnter", function() 
+            row:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8", tile = true})
+            row:SetBackdropColor(0.2, 0.2, 0.8, 0.2)
+        end)
+        row:SetScript("OnLeave", function() 
+            row:SetBackdrop(nil)
+        end)
+        
+        -- Character name
+        local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nameText:SetPoint("TOPLEFT", row, "TOPLEFT", 5, 0)
+        nameText:SetText(character)
+        -- Removed debug breakpoint
+        
+        -- Professions
+        local profText = ""
+        if type(professions) == "table" and professions.professionString then
+            profText = professions.professionString
+        else
+            -- Handle legacy format or error cases
+            profText = tostring(professions) or "No data"
+        end
+        
+        local professionText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        professionText:SetPoint("TOPLEFT", row, "TOPLEFT", 120, 0)
+        professionText:SetText(profText)
+        
+        yOffset = yOffset - rowHeight
+    end
+    
+    -- Update scrollChild height
+    scrollChild:SetHeight(math.max(math.abs(yOffset), 1))
+end
+
+-- Helper function to check if a profession is primary
+    local function IsProfession(skillName)
+        local primaryProfessions = {
+            "Alchemy", "Blacksmithing", "Enchanting", "Engineering",
+            "Herbalism", "Leatherworking", "Mining", "Skinning",
+            "Tailoring", "Jewelcrafting", "Cooking", "First Aid"
+        }
+        
+        for _, profession in ipairs(primaryProfessions) do
+            if skillName == profession then
+                return true
+            end
+        end
+        
+        return false
+    end
+
 --- Get profession info as a string row for table display (primary professions only)
-function GetProfessionsAsTableRow()
+function SetCharacterProfessions()
     local playerName = UnitName("player")
     local primaryProfessions = {}
     local outputString = playerName
@@ -277,7 +442,7 @@ function GetProfessionsAsTableRow()
         local skillName, isHeader, _, skillRank, _, _, maxRank = GetSkillLineInfo(i)
         
         -- If not a header and is a primary profession
-        if not isHeader and IsPrimaryProfession(skillName) then
+        if not isHeader and IsProfession(skillName) then
             local profData = skillName .. ": " .. skillRank .. "/" .. maxRank
             table.insert(primaryProfessions, profData)
         end
@@ -285,30 +450,25 @@ function GetProfessionsAsTableRow()
     
     -- Add primary professions to the output string
     for _, profData in ipairs(primaryProfessions) do
-        outputString = outputString .. "\t" .. profData
+        outputString = outputString .. " | " .. profData
     end
     
-    print (outputString)
-
-    return outputString
-end
-
--- Helper function to check if a profession is primary
-function IsPrimaryProfession(skillName)
-    local primaryProfessions = {
-        "Alchemy", "Blacksmithing", "Enchanting", "Engineering",
-        "Herbalism", "Leatherworking", "Mining", "Skinning",
-        "Tailoring"
+    -- Get current timestamp
+    local lastModified = date("%Y-%m-%d %H:%M:%S")
+    
+    -- Create data table with outputString and lastModified
+    local characterData = {
+        professionString = outputString,
+        lastModified = lastModified
     }
     
-    for _, profession in ipairs(primaryProfessions) do
-        if skillName == profession then
-            return true
-        end
+    -- Save to stored variables
+    if CharacterProfessionsDB then
+        CharacterProfessionsDB[playerName] = characterData
     end
-    
-    return false
 end
+
+
 
 local function CreateDeathLogRow(timestamp, zone, playerName, classColor, level, killer)
     local enemyColor = "|cffff0000" -- Red
@@ -471,13 +631,10 @@ ReportDeath = function()
     -- DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
 end
 
-
-
 function RefreshDeathLog()
     -- GenerateDeathLog() -- Refresh the UI
     DeathLoggerDB = { }
     ReloadUI()
-    print("[Sällskapsresan] Uppdaterat dödsloggen.")
     OpenUI()
 end
 
@@ -637,4 +794,8 @@ Saellskaspresan.dataObject = LDB:NewDataObject("Saellskapsresan", {
 SSR_DB = SSR_DB or { minimap = { hide = false } }
 
 icon:Register("Saellskapsresan", Saellskaspresan.dataObject, SSR_DB.minimap)
+
+
+
+ -- UnitXP("debug", "breakpoint");
 
