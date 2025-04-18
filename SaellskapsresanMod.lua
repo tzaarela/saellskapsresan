@@ -170,7 +170,7 @@ OpenUI = function()
     debugTest:SetWidth(90)
     debugTest:SetHeight(25)
     debugTest:SetText("Debug")
-    debugTest:SetScript("OnClick", GetProfessionsBySkill)
+    debugTest:SetScript("OnClick", GetProfessionsAsTableRow)
 
     -- === Generate Death Log Data ===
     GenerateDeathLog()
@@ -266,36 +266,42 @@ RecordPlayerLogin = function()
     LastLogonDB[playerName] = dateTime
 end
 
--- Get profession info using skill API
-function GetProfessionsBySkill()
-    local professions = {}
+--- Get profession info as a string row for table display (primary professions only)
+function GetProfessionsAsTableRow()
+    local playerName = UnitName("player")
+    local primaryProfessions = {}
+    local outputString = playerName
     
     -- Loop through all skills
     for i = 1, GetNumSkillLines() do
         local skillName, isHeader, _, skillRank, _, _, maxRank = GetSkillLineInfo(i)
         
-        -- If not a header and is a profession
-        if not isHeader and IsProfession(skillName) then
-            professions[skillName] = {
-                skillRank = skillRank,
-                maxRank = maxRank
-            }
-            print(skillName .. ": " .. skillRank .. "/" .. maxRank)
+        -- If not a header and is a primary profession
+        if not isHeader and IsPrimaryProfession(skillName) then
+            local profData = skillName .. ": " .. skillRank .. "/" .. maxRank
+            table.insert(primaryProfessions, profData)
         end
     end
     
-    return professions
+    -- Add primary professions to the output string
+    for _, profData in ipairs(primaryProfessions) do
+        outputString = outputString .. "\t" .. profData
+    end
+    
+    print (outputString)
+
+    return outputString
 end
 
--- Helper function to determine if a skill is a profession
-function IsProfession(skillName)
-    local professionList = {
+-- Helper function to check if a profession is primary
+function IsPrimaryProfession(skillName)
+    local primaryProfessions = {
         "Alchemy", "Blacksmithing", "Enchanting", "Engineering",
         "Herbalism", "Leatherworking", "Mining", "Skinning",
-        "Tailoring", "Cooking", "First Aid", "Fishing"
+        "Tailoring"
     }
     
-    for _, profession in ipairs(professionList) do
+    for _, profession in ipairs(primaryProfessions) do
         if skillName == profession then
             return true
         end
