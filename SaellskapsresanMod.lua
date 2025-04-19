@@ -24,7 +24,7 @@ InitializeSystem = function()
 end
 
 -- UI Creation 
-local MainFrame, StartFrame, DeathLogFrame, StatsFrame, ProfessionsFrame, scrollChild, logList
+local MainFrame, StartFrame, DeathLogFrame, StatsFrame, ProfessionsFrame, contentFrame, fauxScroll, scrollFrame, logList
 
 OpenUI = function()
     if MainFrame and MainFrame:IsShown() then
@@ -68,19 +68,19 @@ OpenUI = function()
         return btn
     end
 
-    -- === Subframe Toggle Logic ===
-    local function ShowFrame(frame)
-        StartFrame:Hide()
-        DeathLogFrame:Hide()
-        StatsFrame:Hide()
-        ProfessionsFrame:Hide()
-        frame:Show()
+    -- Function to set button appearance (pressed or normal)
+    local function SetButtonState(button, isPressed)
+        if isPressed then
+            -- Pressed appearance for GameMenuButtonTemplate
+            button:LockHighlight()
+        else
+            -- Normal appearance
+            button:UnlockHighlight()
+        end
     end
 
-    -- === Subframes ===
-
     -- START Frame
-    StartFrame = CreateFrame("Frame", nil, MainFrame)
+    StartFrame = CreateFrame("Frame", "StartFrame", MainFrame)
     StartFrame:SetAllPoints(MainFrame)
     StartFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -105,7 +105,7 @@ OpenUI = function()
     logo:SetHeight(128) -- adjust size as needed
 
     -- Deathlog Frame (your original UI reused)
-    DeathLogFrame = CreateFrame("Frame", nil, MainFrame)
+    DeathLogFrame = CreateFrame("Frame", "DeathLogFrame", MainFrame)
     DeathLogFrame:SetAllPoints(MainFrame)
     DeathLogFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -126,7 +126,7 @@ OpenUI = function()
     logList:SetHeight(340)
 
     -- Stats Frame
-    StatsFrame = CreateFrame("Frame", nil, MainFrame)
+    StatsFrame = CreateFrame("Frame", "StatsFrame", MainFrame)
     StatsFrame:SetAllPoints(MainFrame)
     StatsFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -144,7 +144,7 @@ OpenUI = function()
     statsText:SetText("Under konstruktion, återkom senare.")
 
     -- Professions Frame
-    ProfessionsFrame = CreateFrame("Frame", nil, MainFrame)
+    ProfessionsFrame = CreateFrame("Frame", "ProfessionsFrame", MainFrame)
     ProfessionsFrame:SetAllPoints(MainFrame)
     ProfessionsFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -156,38 +156,79 @@ OpenUI = function()
     ProfessionsFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
     ProfessionsFrame:Hide()
 
-    local title = ProfessionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    title:SetPoint("TOP", ProfessionsFrame, "TOP", 0, -15)
-    title:SetText("Character Professions")
-
-    -- Create scrollframe for the table
-    local scrollFrame = CreateFrame("ScrollFrame", "ProfessionsScrollFrame", ProfessionsFrame, "UIPanelScrollFrameTemplate")
+    -- Create a FauxScrollFrame
+    scrollFrame = CreateFrame("Frame", "ProfessionsFauxScrollFrame", ProfessionsFrame)
     scrollFrame:SetPoint("TOPLEFT", ProfessionsFrame, "TOPLEFT", 20, -40)
     scrollFrame:SetPoint("BOTTOMRIGHT", ProfessionsFrame, "BOTTOMRIGHT", -35, 20)
-
-    -- Create the scroll child frame to contain the table
-    scrollChild = CreateFrame("Frame", "ProfessionsScrollChild")
-    scrollChild:SetWidth(scrollFrame:GetWidth())
-    scrollChild:SetHeight(500)
-    -- Add a visible background to scrollChild
-    scrollChild:SetBackdrop({
+    scrollFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
     })
-    scrollChild:SetBackdropColor(1, 0, 0, 0.3) -- Red tint to make it visible
-    scrollChild:Show()
+    scrollFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
 
-    -- After creating the scrollChild
-    scrollFrame:SetScrollChild(scrollChild)
-    print("Scroll child set:", tostring((scrollFrame:GetScrollChild() == scrollChild)))
+    -- Create the actual scroll frame
+    fauxScroll = CreateFrame("ScrollFrame", "ProfessionsFauxScroll", scrollFrame, "FauxScrollFrameTemplate")
+    fauxScroll:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 0, 0)
+    fauxScroll:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", -16, 0)
 
-    -- === Navigation Buttons Hookup ===
-    CreateNavButton("StartBtn", "Start", 20, function() ShowFrame(StartFrame) end)
-    CreateNavButton("LogBtn", "Dödslogg", 150, function() ShowFrame(DeathLogFrame) end)
-    CreateNavButton("StatsBtn", "Statistik", 280, function() ShowFrame(StatsFrame) end)
-    CreateNavButton("ProfessionsBtn", "Yrken", 410, function() ShowFrame(ProfessionsFrame) end)
+    -- Create content frame directly inside the scrollFrame (no SetScrollChild needed)
+    contentFrame = CreateFrame("Frame", "ProfessionsContentFrame", scrollFrame)
+    contentFrame:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 0, 0)
+    contentFrame:SetWidth(scrollFrame:GetWidth() - 16)  -- Adjust for scroll bar
+    contentFrame:SetHeight(500)  -- Will be adjusted based on content
+
+    -- Add visible background to content frame
+    contentFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = nil,
+        tile = true, tileSize = 16, edgeSize = 0,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    contentFrame:SetBackdropColor(0.5, 0, 0, 0.3)  -- Red tint
+
+    PopulateProfessionsTable()
+
+
+    -- Navigation Buttons --
+    NavButtons = { }
+    
+    local function ShowFrame(frame)
+        
+        -- Find and highlight the correct button based on frame name
+        local frameName = frame:GetName()
+        for k, v in pairs(NavButtons) do
+            if k == frameName then
+                SetButtonState(v, true)
+            else
+                SetButtonState(v, false)
+            end
+        end
+
+        -- Hide all frames
+        StartFrame:Hide()
+        DeathLogFrame:Hide()
+        StatsFrame:Hide()
+        ProfessionsFrame:Hide()
+        
+        -- Show the requested frame
+        frame:Show()
+        
+    end
+    
+    -- Create navigation buttons
+    local startBtn = CreateNavButton("StartBtn", "Start", 20, function() ShowFrame(StartFrame) end)
+    local logBtn = CreateNavButton("LogBtn", "Dödslogg", 150, function() ShowFrame(DeathLogFrame) end)
+    local statsBtn = CreateNavButton("StatsBtn", "Statistik", 280, function() ShowFrame(StatsFrame) end)
+    local professionsBtn = CreateNavButton("ProfessionsBtn", "Yrken", 410, function() ShowFrame(ProfessionsFrame) end)
+
+    -- Fill the table after buttons are created
+    NavButtons["StartFrame"] = startBtn
+    NavButtons["DeathLogFrame"] = logBtn
+    NavButtons["StatsFrame"] = statsBtn
+    NavButtons["ProfessionsFrame"] = professionsBtn
+
 
     -- === Close Button ===
     local close = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
@@ -211,12 +252,17 @@ OpenUI = function()
     debugTest:SetWidth(90)
     debugTest:SetHeight(25)
     debugTest:SetText("Debug")
-    debugTest:SetScript("OnClick", PopulateProfessionsTable)
+    debugTest:SetScript("OnClick", DebugPrintCharacterProfessionsDB)
 
     -- === Generate Death Log Data ===
     GenerateDeathLog()
 
     -- === Show default view ===
+    
+    
+    
+    -- Initialize with Start button pressed
+    SetButtonState(startBtn, true)
     ShowFrame(StartFrame)
 end
 
@@ -260,6 +306,7 @@ systemFrame:SetScript("OnEvent", function()
         
         -- Update table if frame is visible
         if ProfessionsFrame and ProfessionsFrame:IsVisible() then
+           
             PopulateProfessionsTable()
         end
 
@@ -312,130 +359,177 @@ RecordPlayerLogin = function()
     LastLogonDB[playerName] = dateTime
 end
 
-function PopulateProfessionsTable()
-    print("Populating professions table")
-    
-    -- Clear previous entries
-    local children = { scrollChild:GetChildren() }
-    for _, child in ipairs(children) do
-        child:Hide()
-        child:SetParent(nil)
+
+function DebugPrintCharacterProfessionsDB()
+    print("CharacterProfessionsDB debug:")
+    if not CharacterProfessionsDB then
+        print("CharacterProfessionsDB is nil")
+        return
     end
     
-    -- Add a single test label directly to ProfessionsFrame to see if that works
-    local testLabel = ProfessionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    testLabel:SetPoint("CENTER", ProfessionsFrame, "CENTER", 0, 0)
-    testLabel:SetText("TEST LABEL - SHOULD BE VISIBLE")
-    print("Test label added")
+    local count = 0
+    for character, data in pairs(CharacterProfessionsDB) do
+        count = count + 1
+        print("Character: [" .. tostring(character) .. "]")
+        if type(data) == "table" then
+            print("  Data is a table")
+            print("  professionString: [" .. tostring(data.professionString) .. "]")
+            print("  lastModified: [" .. tostring(data.lastModified) .. "]")
+        else
+            print("  Data type: " .. type(data))
+            print("  Data: [" .. tostring(data) .. "]")
+        end
+    end
     
-    -- Now try to add something to scrollChild
-    local scrollTest = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    scrollTest:SetPoint("TOP", scrollChild, "TOP", 0, 0)
-    scrollTest:SetText("SCROLL TEST")
-    print("Scroll test label added")
-    
-    
-    print("ScrollChild dimensions set:", scrollChild:GetWidth(), scrollChild:GetHeight())
+    print("Total entries:", count)
 end
 
--- Function to populate the table with all characters' profession data
-function PopulateProfessionsTables()
+-- Modified populate function for FauxScrollFrame
+function PopulateProfessionsTable()
     -- Clear previous entries
-    local children = { scrollChild:GetChildren() }
+    local children = { contentFrame:GetChildren() }
     for _, child in ipairs(children) do
-        child:Hide()
-        child:SetParent(nil)
+        if child:GetName() ~= "ProfessionsHeader" then  -- Keep header
+            child:Hide()
+            child:SetParent(nil)
+        end
     end
     
-    -- Table header
-    local headerRow = CreateFrame("Frame", nil, scrollChild) -- Changed from ProfessionsFrame to scrollChild
+    -- Create header if it doesn't exist
+    local headerRow = getglobal("ProfessionsHeader") or CreateFrame("Frame", "ProfessionsHeader", contentFrame)
+    if not headerRow:GetParent() then
+        headerRow:SetParent(contentFrame)
+    end
+    
     headerRow:SetHeight(25)
-    headerRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, 0)
-    headerRow:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 0, 0)
+    headerRow:SetWidth(contentFrame:GetWidth())
+    headerRow:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
+    headerRow:Show()
     
-    local characterHeader = headerRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    characterHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 5, 0)
-    characterHeader:SetText("Character")
-    
-    local professionsHeader = headerRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    professionsHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 120, 0)
-    professionsHeader:SetText("Professions")
+    -- Create header text
+    if not headerRow.characterTitle then
+        headerRow.characterTitle = headerRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        headerRow.characterTitle:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 5, -5)
+        headerRow.characterTitle:SetText("Character")
+        
+        headerRow.professionsTitle = headerRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        headerRow.professionsTitle:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 120, -5)
+        headerRow.professionsTitle:SetText("Professions")
+    end
     
     -- Table rows
-    local yOffset = -25
+    local yOffset = -30
     local rowHeight = 20
+    local numRows = 0
     
-    local professionsData = {}
-
+    -- FauxScrollFrame setup
+    local maxDisplayedRows = math.floor((contentFrame:GetHeight() - 30) / (rowHeight + 2))
+    local totalRows = 0
+    
+    -- Count total entries
     if CharacterProfessionsDB then
-        for character, profs in pairs(CharacterProfessionsDB) do
-            professionsData[character] = profs
+        for _ in pairs(CharacterProfessionsDB) do
+            totalRows = totalRows + 1
         end
-    end
-
-    for character, professions in pairs(professionsData) do
-        local row = CreateFrame("Frame", nil, scrollChild)
-        row:SetHeight(rowHeight)
-        row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, yOffset)
-        row:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 0, yOffset)
-        
-        -- Add highlight on mouseover
-        row:SetScript("OnEnter", function() 
-            row:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8", tile = true})
-            row:SetBackdropColor(0.2, 0.2, 0.8, 0.2)
-        end)
-        row:SetScript("OnLeave", function() 
-            row:SetBackdrop(nil)
-        end)
-        
-        -- Character name
-        local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        nameText:SetPoint("TOPLEFT", row, "TOPLEFT", 5, 0)
-        nameText:SetText(character)
-        -- Removed debug breakpoint
-        
-        -- Professions
-        local profText = ""
-        if type(professions) == "table" and professions.professionString then
-            profText = professions.professionString
-        else
-            -- Handle legacy format or error cases
-            profText = tostring(professions) or "No data"
-        end
-        
-        local professionText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        professionText:SetPoint("TOPLEFT", row, "TOPLEFT", 120, 0)
-        professionText:SetText(profText)
-        
-        yOffset = yOffset - rowHeight
     end
     
-    -- Update scrollChild height
-    scrollChild:SetHeight(math.max(math.abs(yOffset), 1))
-end
-
--- Helper function to check if a profession is primary
-    local function IsProfession(skillName)
-        local primaryProfessions = {
-            "Alchemy", "Blacksmithing", "Enchanting", "Engineering",
-            "Herbalism", "Leatherworking", "Mining", "Skinning",
-            "Tailoring", "Jewelcrafting", "Cooking", "First Aid"
-        }
-        
-        for _, profession in ipairs(primaryProfessions) do
-            if skillName == profession then
-                return true
+    -- Update FauxScrollFrame
+    FauxScrollFrame_Update(fauxScroll, totalRows, maxDisplayedRows, rowHeight)
+    local offset = FauxScrollFrame_GetOffset(fauxScroll)
+    
+    -- Get data from saved variables
+    if CharacterProfessionsDB then
+        local index = 0
+        for character, profData in pairs(CharacterProfessionsDB) do
+            index = index + 1
+            
+            -- Only show rows that are in view based on scroll position
+            if index > offset and numRows < maxDisplayedRows then
+                numRows = numRows + 1
+                
+                -- Create or reuse a row
+                local rowName = "ProfRow"..numRows
+                local row = getglobal(rowName) or CreateFrame("Frame", rowName, contentFrame)
+                row:SetHeight(rowHeight)
+                row:SetWidth(contentFrame:GetWidth())
+                row:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, yOffset)
+                row:Show()
+                
+                -- Background for alternate rows
+                if math.mod(numRows, 2) == 0 then
+                    row:SetBackdrop({
+                        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+                        tile = true
+                    })
+                    row:SetBackdropColor(0.1, 0.1, 0.1, 0.2)
+                else
+                    row:SetBackdrop(nil)
+                end
+                
+                -- Character name
+                if not row.nameText then
+                    row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    row.nameText:SetPoint("TOPLEFT", row, "TOPLEFT", 5, 0)
+                end
+                row.nameText:SetText(character)
+                
+                -- Profession data
+                if not row.profText then
+                    row.profText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    row.profText:SetPoint("TOPLEFT", row, "TOPLEFT", 120, 0)
+                end
+                
+                local profText = "No data"
+                if type(profData) == "table" and profData.professionString then
+                    profText = profData.professionString
+                elseif type(profData) == "string" then
+                    profText = profData
+                end
+                row.profText:SetText(profText)
+                
+                yOffset = yOffset - (rowHeight + 2)
             end
         end
-        
-        return false
+    else
+        -- Add a "no data" row
+        local noDataText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        noDataText:SetPoint("TOP", contentFrame, "TOP", 0, -50)
+        noDataText:SetText("No profession data available")
     end
+    
+    -- Hide unused rows
+    for i = numRows + 1, 20 do -- Assuming we never display more than 20 rows
+        local row = getglobal("ProfRow"..i)
+        if row then
+            row:Hide()
+        end
+    end
+end
 
---- Get profession info as a string row for table display (primary professions only)
+
+-- Helper function to check if a profession is primary
+local function IsProfession(skillName)
+    local primaryProfessions = {
+        "Alchemy", "Blacksmithing", "Enchanting", "Engineering",
+        "Herbalism", "Leatherworking", "Mining", "Skinning",
+        "Tailoring", "Jewelcrafting", "Cooking", "First Aid"
+    }
+    
+    for _, profession in ipairs(primaryProfessions) do
+        if skillName == profession then
+            return true
+        end
+    end
+    
+    return false
+end
+
 function SetCharacterProfessions()
     local playerName = UnitName("player")
+    print("Setting professions for: [" .. tostring(playerName) .. "]")
+    
     local primaryProfessions = {}
-    local outputString = playerName
+    local outputString = ""
     
     -- Loop through all skills
     for i = 1, GetNumSkillLines() do
@@ -445,16 +539,19 @@ function SetCharacterProfessions()
         if not isHeader and IsProfession(skillName) then
             local profData = skillName .. ": " .. skillRank .. "/" .. maxRank
             table.insert(primaryProfessions, profData)
+            print("Found profession: " .. profData)
         end
     end
     
     -- Add primary professions to the output string
     for _, profData in ipairs(primaryProfessions) do
-        outputString = outputString .. " | " .. profData
+        outputString = outputString .. profData .. " | "
     end
-    
+    print("Output string: [" .. outputString .. "]")
+
     -- Get current timestamp
     local lastModified = date("%Y-%m-%d %H:%M:%S")
+    print("Timestamp: [" .. lastModified .. "]")
     
     -- Create data table with outputString and lastModified
     local characterData = {
@@ -463,9 +560,14 @@ function SetCharacterProfessions()
     }
     
     -- Save to stored variables
-    if CharacterProfessionsDB then
-        CharacterProfessionsDB[playerName] = characterData
+    if CharacterProfessionsDB == nil then
+        print("Creating CharacterProfessionsDB")
+        CharacterProfessionsDB = {}
     end
+    
+    print("Saving to CharacterProfessionsDB[" .. tostring(playerName) .. "]")
+    CharacterProfessionsDB[playerName] = characterData
+    print("Save complete")
 end
 
 
