@@ -16,34 +16,48 @@ systemFrame:RegisterEvent("SKILL_LINES_CHANGED")
 
 -- Initialize UI function (called in ADDON_LOADED)
 InitializeSystem = function()
+    CurrentCharacter = CurrentCharacter or ""
     DeathLoggerDB = DeathLoggerDB or {}
     LastLogonDB = LastLogonDB or {}
     SyncLoaded = SyncLoaded or false
     CharacterProfessionsDB = CharacterProfessionsDB or {}
+    LocalCurrentCharacter = LocalCurrentCharacter or ""
+    LocalDeathLoggerDB = LocalDeathLoggerDB or {}
+    LocalLastLogonDB = LocalLastLogonDB or {}
+    LocalSyncLoaded = LocalSyncLoaded or false
+    LocalCharacterProfessionsDB = LocalCharacterProfessionsDB or {}
     DEFAULT_CHAT_FRAME:AddMessage("Sällskapsresan-Mod v0.1 har initierats!", 1, 0.5, 0)
 end
 
--- UI Creation 
+-- local variables
+local LastKiller = "Främmande varelse"
+
+-- local ui-variables
 local MainFrame, StartFrame, DeathLogFrame, StatsFrame, ProfessionsFrame, contentFrame, fauxScroll, scrollFrame, logList
 
+-- Open the UI
 OpenUI = function()
     if MainFrame and MainFrame:IsShown() then
         return
     end
 
-    -- === Main Frame ===
+    -- Main Frame
     MainFrame = CreateFrame("Frame", "SallskaModMainFrame", UIParent)
     MainFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     MainFrame:SetWidth(600)
     MainFrame:SetHeight(450)
     MainFrame:SetFrameStrata("DIALOG")
+
+    local mainBg = MainFrame:CreateTexture(nil, "BACKGROUND")
+    mainBg:SetAllPoints(MainFrame)
+    mainBg:SetTexture(0, 0, 0, 0.9) -- Almost black with high opacity
+
     MainFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 32,
+        edgeSize = 32,
         insets = { left = 11, right = 12, top = 12, bottom = 11 },
     })
-    MainFrame:SetAlpha(1)
+
     MainFrame:EnableMouse(true)
     MainFrame:SetMovable(true)
     MainFrame:SetUserPlaced(true)
@@ -51,13 +65,13 @@ OpenUI = function()
     MainFrame:SetScript("OnDragStart", function() MainFrame:StartMoving() end)
     MainFrame:SetScript("OnDragStop", function() MainFrame:StopMovingOrSizing() end)
 
-    -- === Title ===
+    -- Title
     local title = MainFrame:CreateFontString(nil, "OVERLAY")
     title:SetFont("Fonts\\FRIZQT__.TTF", 22, "THICKOUTLINE")
     title:SetText("Sällskapsresan Mod v" .. addonVersion)
     title:SetPoint("TOP", 0, -24)
 
-    -- === Navigation Buttons ===
+    -- Navigation Buttons
     local function CreateNavButton(name, text, xOffset, onClick)
         local btn = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
         btn:SetWidth(120)
@@ -82,16 +96,20 @@ OpenUI = function()
     -- START Frame
     StartFrame = CreateFrame("Frame", "StartFrame", MainFrame)
     StartFrame:SetAllPoints(MainFrame)
+
+    local startFrameBg = StartFrame:CreateTexture(nil, "BACKGROUND")
+    startFrameBg:SetAllPoints(StartFrame)
+    startFrameBg:SetTexture(0.2, 0.2, 0.2, 0.9) -- Almost black with high opacity
+
     StartFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
     })
+
     StartFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
     StartFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
-
-
+    
     local infoText = StartFrame:CreateFontString(nil, "OVERLAY")
     infoText:SetFont("Fonts\\FRIZQT__.TTF", 14)
     infoText:SetPoint("TOPLEFT", 20, -20)
@@ -104,18 +122,25 @@ OpenUI = function()
     logo:SetWidth(128)
     logo:SetHeight(128) -- adjust size as needed
 
-    -- Deathlog Frame (your original UI reused)
+    
+    -- Deathlog Frame
     DeathLogFrame = CreateFrame("Frame", "DeathLogFrame", MainFrame)
     DeathLogFrame:SetAllPoints(MainFrame)
+    
+    local deathlogFrameBg = DeathLogFrame:CreateTexture(nil, "BACKGROUND")
+    deathlogFrameBg:SetAllPoints(DeathLogFrame)
+    deathlogFrameBg:SetTexture(0.2, 0.2, 0.2, 0.9) --- Dark gray
+
     DeathLogFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
     })
+
     DeathLogFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
     DeathLogFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
     DeathLogFrame:Hide()
+
 
     -- Move existing logList content into LogFrame
     logList = CreateFrame("Frame", nil, UIParent)
@@ -128,12 +153,17 @@ OpenUI = function()
     -- Stats Frame
     StatsFrame = CreateFrame("Frame", "StatsFrame", MainFrame)
     StatsFrame:SetAllPoints(MainFrame)
+    
+    local statsFrameBg = StatsFrame:CreateTexture(nil, "BACKGROUND")
+    statsFrameBg:SetAllPoints(StatsFrame)
+    statsFrameBg:SetTexture(0.2, 0.2, 0.2, 0.9) --- Dark gray
+
     StatsFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
     })
+
     StatsFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
     StatsFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
     StatsFrame:Hide()
@@ -146,12 +176,17 @@ OpenUI = function()
     -- Professions Frame
     ProfessionsFrame = CreateFrame("Frame", "ProfessionsFrame", MainFrame)
     ProfessionsFrame:SetAllPoints(MainFrame)
+    
+    local proffFrameBg = ProfessionsFrame:CreateTexture(nil, "BACKGROUND")
+    proffFrameBg:SetAllPoints(ProfessionsFrame)
+    proffFrameBg:SetTexture(0.1, 0.1, 0.1, 0.9) --- Dark gray
+    
     ProfessionsFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
     })
+
     ProfessionsFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
     ProfessionsFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
     ProfessionsFrame:Hide()
@@ -184,7 +219,7 @@ OpenUI = function()
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = nil,
         tile = true, tileSize = 16, edgeSize = 0,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+        insets = { left = 4, right = 4, top = 4, bottom = 4, }
     })
     contentFrame:SetBackdropColor(0.5, 0, 0, 0.3)  -- Red tint
 
@@ -230,7 +265,7 @@ OpenUI = function()
     NavButtons["ProfessionsFrame"] = professionsBtn
 
 
-    -- === Close Button ===
+    -- Close Button
     local close = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
     close:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -20, 20)
     close:SetWidth(90)
@@ -238,26 +273,26 @@ OpenUI = function()
     close:SetText("Stäng")
     close:SetScript("OnClick", function() MainFrame:Hide() end)
 
-    -- === Reset Button ===
+    -- Reset Button
     local refresh = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
     refresh:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -120, 20)
     refresh:SetWidth(90)
     refresh:SetHeight(25)
     refresh:SetText("Ladda Om")
-    refresh:SetScript("OnClick", RefreshDeathLog)
+    refresh:SetScript("OnClick", ReloadUI)
 
-    -- === Reset Button ===
+    -- Reset Button
     local debugTest = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
     debugTest:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -220, 20)
     debugTest:SetWidth(90)
     debugTest:SetHeight(25)
     debugTest:SetText("Debug")
-    debugTest:SetScript("OnClick", DebugPrintCharacterProfessionsDB)
+    debugTest:SetScript("OnClick", PopulateProfessionsTable)
 
-    -- === Generate Death Log Data ===
+    -- Generate Death Log Data
     GenerateDeathLog()
 
-    -- === Show default view ===
+    -- Show default view
     
     
     
@@ -266,17 +301,12 @@ OpenUI = function()
     ShowFrame(StartFrame)
 end
 
+-- Close the UI
 CloseUI = function()
     if MainFrame then
         MainFrame:Hide()
     end
 end
-
--- Update Loop (uncomment below if needed and remove this parenteses)
--- systemFrame:SetScript("OnUpdate",function(s,e)
-
--- end);
-
 
 -- Event Handler
 local deathReportSent = false;
@@ -306,7 +336,6 @@ systemFrame:SetScript("OnEvent", function()
         
         -- Update table if frame is visible
         if ProfessionsFrame and ProfessionsFrame:IsVisible() then
-           
             PopulateProfessionsTable()
         end
 
@@ -353,57 +382,46 @@ end)
 RecordPlayerLogin = function()
     
     -- Update current characters timestamp
-    LastLogonDB = {}
+    LocalLastLogonDB = {}
     local playerName = UnitName("player")
     local dateTime = date("%y-%m-%d %H:%M:%S")
-    LastLogonDB[playerName] = dateTime
+
+    print("CurrentPlayer: " .. playerName)
+    print("PreviousPlayer: " .. tostring(CurrentCharacter))
+
+    if playerName == tostring(CurrentCharacter) then
+        LocalLastLogonDB[playerName] = dateTime
+        print("current player logged in: " .. playerName)
+    else
+        LocalCurrentCharacter = playerName
+        CurrentCharacter = playerName
+        ShowErrorPopup("Du har bytt karaktär sen du spelade sist, du måste skriva /reload eller trycka 'Ladda om' i Saellskapsresan Addonet.");
+    end 
 end
 
-
-function DebugPrintCharacterProfessionsDB()
-    print("CharacterProfessionsDB debug:")
-    if not CharacterProfessionsDB then
-        print("CharacterProfessionsDB is nil")
-        return
-    end
-    
-    local count = 0
-    for character, data in pairs(CharacterProfessionsDB) do
-        count = count + 1
-        print("Character: [" .. tostring(character) .. "]")
-        if type(data) == "table" then
-            print("  Data is a table")
-            print("  professionString: [" .. tostring(data.professionString) .. "]")
-            print("  lastModified: [" .. tostring(data.lastModified) .. "]")
-        else
-            print("  Data type: " .. type(data))
-            print("  Data: [" .. tostring(data) .. "]")
-        end
-    end
-    
-    print("Total entries:", count)
-end
-
--- Modified populate function for FauxScrollFrame
 function PopulateProfessionsTable()
-    -- Clear previous entries
+    print("Populating Professions Table...")
+
+    -- Clear previous entries but NOT the header
     local children = { contentFrame:GetChildren() }
     for _, child in ipairs(children) do
-        if child:GetName() ~= "ProfessionsHeader" then  -- Keep header
+        if child:GetName() ~= "ProfessionsHeader" then
+            print("hiding child...")
             child:Hide()
-            child:SetParent(nil)
         end
     end
     
     -- Create header if it doesn't exist
     local headerRow = getglobal("ProfessionsHeader") or CreateFrame("Frame", "ProfessionsHeader", contentFrame)
-    if not headerRow:GetParent() then
+    if headerRow:GetParent() ~= contentFrame then
         headerRow:SetParent(contentFrame)
     end
     
     headerRow:SetHeight(25)
     headerRow:SetWidth(contentFrame:GetWidth())
-    headerRow:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
+    headerRow:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -10)
+    
+    -- IMPORTANT: Explicitly show the header
     headerRow:Show()
     
     -- Create header text
@@ -416,6 +434,10 @@ function PopulateProfessionsTable()
         headerRow.professionsTitle:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 120, -5)
         headerRow.professionsTitle:SetText("Professions")
     end
+    
+    -- IMPORTANT: Explicitly show the text elements
+    headerRow.characterTitle:Show()
+    headerRow.professionsTitle:Show()
     
     -- Table rows
     local yOffset = -30
@@ -437,6 +459,11 @@ function PopulateProfessionsTable()
     FauxScrollFrame_Update(fauxScroll, totalRows, maxDisplayedRows, rowHeight)
     local offset = FauxScrollFrame_GetOffset(fauxScroll)
     
+    -- print("Total rows: " .. totalRows)
+    -- print("Max displayed rows: " .. maxDisplayedRows)
+    -- print("Scroll offset: " .. offset)
+
+
     -- Get data from saved variables
     if CharacterProfessionsDB then
         local index = 0
@@ -449,11 +476,25 @@ function PopulateProfessionsTable()
                 
                 -- Create or reuse a row
                 local rowName = "ProfRow"..numRows
-                local row = getglobal(rowName) or CreateFrame("Frame", rowName, contentFrame)
+                local row = getglobal(rowName)
+                if not row then
+                    -- print("Creating new row: " .. rowName)
+                    row = CreateFrame("Frame", rowName, contentFrame)
+                else
+                    -- print("Reusing existing row: " .. rowName)
+                    -- Make sure it's properly parented
+                    if row:GetParent() ~= contentFrame then
+                        row:SetParent(contentFrame)
+                    end
+                end
+                
+                -- IMPORTANT: Explicitly show the row
+                row:Show()
+                
+                -- Update row position
                 row:SetHeight(rowHeight)
                 row:SetWidth(contentFrame:GetWidth())
-                row:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, yOffset)
-                row:Show()
+                row:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, yOffset - 10)
                 
                 -- Background for alternate rows
                 if math.mod(numRows, 2) == 0 then
@@ -473,6 +514,9 @@ function PopulateProfessionsTable()
                 end
                 row.nameText:SetText(character)
                 
+                -- Make sure nameText is shown
+                row.nameText:Show()
+                
                 -- Profession data
                 if not row.profText then
                     row.profText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -487,6 +531,9 @@ function PopulateProfessionsTable()
                 end
                 row.profText:SetText(profText)
                 
+                -- Make sure profText is shown
+                row.profText:Show()
+                
                 yOffset = yOffset - (rowHeight + 2)
             end
         end
@@ -496,16 +543,7 @@ function PopulateProfessionsTable()
         noDataText:SetPoint("TOP", contentFrame, "TOP", 0, -50)
         noDataText:SetText("No profession data available")
     end
-    
-    -- Hide unused rows
-    for i = numRows + 1, 20 do -- Assuming we never display more than 20 rows
-        local row = getglobal("ProfRow"..i)
-        if row then
-            row:Hide()
-        end
-    end
 end
-
 
 -- Helper function to check if a profession is primary
 local function IsProfession(skillName)
@@ -526,8 +564,6 @@ end
 
 function SetCharacterProfessions()
     local playerName = UnitName("player")
-    print("Setting professions for: [" .. tostring(playerName) .. "]")
-    
     local primaryProfessions = {}
     local outputString = ""
     
@@ -539,7 +575,6 @@ function SetCharacterProfessions()
         if not isHeader and IsProfession(skillName) then
             local profData = skillName .. ": " .. skillRank .. "/" .. maxRank
             table.insert(primaryProfessions, profData)
-            print("Found profession: " .. profData)
         end
     end
     
@@ -547,11 +582,9 @@ function SetCharacterProfessions()
     for _, profData in ipairs(primaryProfessions) do
         outputString = outputString .. profData .. " | "
     end
-    print("Output string: [" .. outputString .. "]")
 
     -- Get current timestamp
     local lastModified = date("%Y-%m-%d %H:%M:%S")
-    print("Timestamp: [" .. lastModified .. "]")
     
     -- Create data table with outputString and lastModified
     local characterData = {
@@ -560,17 +593,14 @@ function SetCharacterProfessions()
     }
     
     -- Save to stored variables
-    if CharacterProfessionsDB == nil then
-        print("Creating CharacterProfessionsDB")
-        CharacterProfessionsDB = {}
+    if LocalCharacterProfessionsDB == nil then
+        LocalCharacterProfessionsDB = {}
     end
     
-    print("Saving to CharacterProfessionsDB[" .. tostring(playerName) .. "]")
+    print("Saving to LocalCharacterProfessionsDB[" .. tostring(playerName) .. "]")
+    LocalCharacterProfessionsDB[playerName] = characterData
     CharacterProfessionsDB[playerName] = characterData
-    print("Save complete")
 end
-
-
 
 local function CreateDeathLogRow(timestamp, zone, playerName, classColor, level, killer)
     local enemyColor = "|cffff0000" -- Red
@@ -585,7 +615,6 @@ local function CreateDeathLogRow(timestamp, zone, playerName, classColor, level,
     )
         return log;
 end
-
 
 function SendRandomDeathMessage(level, killer)
     local messages = {
@@ -683,7 +712,6 @@ local function TableContains(t, value)
     end
     return false
 end
-
     
 local classColors = {
     ["WARRIOR"] = "C79C6E",
@@ -707,7 +735,6 @@ function GetColorFromClassName(class)
     end
 end
 
-
 -- Send message and report when dead
 ReportDeath = function()
     local timestamp = date("%y-%m-%d %H:%M:%S")
@@ -724,23 +751,14 @@ ReportDeath = function()
 
     print("[Sällskapsresan] " .. deathMessage)
 
-    if not TableContains(DeathLoggerDB, deathMessage) then
-        table.insert(DeathLoggerDB, deathMessage)
+    if not TableContains(LocalDeathLoggerDB, deathMessage) then
+        table.insert(LocalDeathLoggerDB, deathMessage)
     end
     
     -- TODO - Finish print guild message or some kind of dramatic announcment that guild member died 
     -- SendChatMessage(CreateRandomGuildDeathMessage(level, killer))
     -- DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
 end
-
-function RefreshDeathLog()
-    -- GenerateDeathLog() -- Refresh the UI
-    DeathLoggerDB = { }
-    ReloadUI()
-    OpenUI()
-end
-
--- Table to store references to the font strings so we can clear them later
 
 function GenerateDeathLog()
     local deathFontStrings = {}
@@ -816,7 +834,6 @@ function ParseKillerName(msg)
 end
 
 --- Simple pattern parser for kills
-LastKiller = "Främmande varelse"
 function ParseKiller(hitMessage)
     if hitMessage then
         LastKiller = ParseKillerName(hitMessage)
@@ -866,8 +883,6 @@ function ShowErrorPopup(message)
     }
     StaticPopup_Show("SALLSKAPSRESAN_ERROR")
 end
-
-
 -- slash Commands
 SLASH_SSR1 = "/sr"
 SLASH_SSR2 = "/ssr"
@@ -896,8 +911,5 @@ Saellskaspresan.dataObject = LDB:NewDataObject("Saellskapsresan", {
 SSR_DB = SSR_DB or { minimap = { hide = false } }
 
 icon:Register("Saellskapsresan", Saellskaspresan.dataObject, SSR_DB.minimap)
-
-
-
  -- UnitXP("debug", "breakpoint");
 

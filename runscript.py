@@ -1,271 +1,614 @@
 import os
 import time
-import re
-import io
-import ast
 import argparse
 import subprocess
 import psutil
-
+import atexit
+from lupa import LuaRuntime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
-from googleapiclient.errors import HttpError
 from datetime import datetime
 
-# Replaces "ACCOUNTNAME" with the accountname in accountName.txt
+# Read account name
 with open("accountname.txt", "r") as f:
     accountName = f.read().strip().upper()
 path = "../../../WTF/Account/ACCOUNTNAME/SavedVariables/SaellskapsresanMod.lua"
 
-#Constants
-LOCAL_FILE_PATH = path.replace("ACCOUNTNAME", accountName)
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+# Constants
+GLOBAL_ACCOUNT_PATH = path.replace("ACCOUNTNAME", accountName)
+LOCAL_CHARACTER_PATH = "../../../WTF/Account/" + accountName + "/Nordanaar/CHARACTERNAME/SavedVariables/SaellskapsresanMod.lua" #We set characterName later in code.
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SERVICE_ACCOUNT_FILE = 'service-account.json'
-FILE_NAME = "SaellskapsresanMod.lua"
-TEMP_REMOTE_COPY = "temp_remote.lua"
+SPREADSHEET_ID = '1IarFvH3gl3y1MGlId3SwrvqLVfYiIR8KwX3dOE8R5II'  # Set this to your spreadsheet ID
+
+# Sheet names
+DEATH_LOGGER_SHEET = 'DeathLoggerDB'
+LAST_LOGON_SHEET = 'LastLogonDB'
+CHARACTER_PROFESSIONS_SHEET = 'CharacterProfessionsDB'
 
 # Parse command-line arguments
-parser = argparse.ArgumentParser(description="Sync DeathLoggerDB with Google Drive.")
-parser.add_argument('-reset', action='store_true', help="Clear the remote DeathLoggerDB file.")
-parser.add_argument('-noupload', action='store_true', help="Dont upload, only download")
+parser = argparse.ArgumentParser(description="Sync SavedVariables with Google Sheets.")
+parser.add_argument('-reset', action='store_true', help="Clear the remote DeathLoggerDB sheet.")
+parser.add_argument('-nodownload', action='store_true', help="Don't upload, only download")
 parser.add_argument('-character', type=str, help="Character name for LastLogonDB update")
 args = parser.parse_args()
 
 # Global variables
 shouldReset = args.reset
-shouldNotUpload = args.noupload
+shouldNotDownload = args.nodownload
 character_name_debug = args.character
 shouldStartGame = True
-shouldUpload_lastlogon = True
 isGameRunning = False
 isFirstCheck = True
 wow_process = None
 
-#### DEFINITIONS #####
-def get_drive_service():
-    credentials = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE,
-        scopes=SCOPES)
-    return build('drive', 'v3', credentials=credentials)
+#### INIT/EXIT FUNCTIONS ####
 
-def find_or_create_file(service, name):
-    results = service.files().list(q=f"name='{name}'", fields="files(id)").execute()
-    files = results.get('files', [])
-    if files:
-        return files[0]['id']
-    else:
-        file_metadata = {'name': name}
-        media = MediaFileUpload(name, resumable=True)
-        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        return file.get('id')
+def initialize_lua():
+    """Initialize and return a Lua runtime."""
+    lua = LuaRuntime(unpack_returned_tuples=True)
 
-def download_file(service, file_id, dest_path):
-    request = service.files().get_media(fileId=file_id)
-    fh = io.FileIO(dest_path, 'wb')
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
+    # Add utility functions to Lua for table serialization
+    lua.execute('''
+    function table_to_string(tbl, indent)
+        if not indent then indent = 0 end
+        local result = "{"
+        local indentStr = string.rep("  ", indent)
+        local first = true
+        
+        for k, v in pairs(tbl) do
+            if not first then result = result .. "," end
+            first = false
+            
+            result = result .. "\\n" .. indentStr .. "  "
+            
+            -- Format the key
+            if type(k) == "string" and k:match("^[_%a][_%w]*$") then
+                result = result .. k
+            else
+                result = result .. "[" .. format_value(k, indent + 1) .. "]"
+            end
+            
+            result = result .. " = " .. format_value(v, indent + 1)
+        end
+        
+        if not first then result = result .. "\\n" .. indentStr end
+        return result .. "}"
+    end
+    
+    function format_value(val, indent)
+        local val_type = type(val)
+        
+        if val_type == "table" then
+            return table_to_string(val, indent)
+        elseif val_type == "string" then
+            return string.format("%q", val)
+        elseif val_type == "nil" then
+            return "nil"
+        else
+            return tostring(val)
+        end
+    end
+    ''')
+    
+    return lua
 
-# Uploads a file to Google Drive by replacing the file with the given file_id.
-# Logs whether the upload succeeded or failed.
-def upload_file(service, file_id, local_path):
+def cleanup_before_exit():
+    """Perform final cleanup operations before the script exits."""
     try:
-        media = MediaFileUpload(local_path, resumable=True)
-        response = service.files().update(fileId=file_id, media_body=media).execute()
-        if response and 'id' in response:
-            print(f"[LOG] Upload successful! File ID: {response['id']}")
-        else:
-            print("[WARNING] Upload completed, but no file ID returned.")
-    except HttpError as error:
-        print(f"[ERROR] Upload failed: {error}")
+        print("[LOG] Performing final cleanup before exit...")
+        
+        # Set SyncLoaded to false to indicate sync is no longer active
+        lua = initialize_lua()  # Make sure this is accessible
+        set_lua_var_in_file(lua, GLOBAL_ACCOUNT_PATH, "SyncLoaded", False)
+        
+        print("[LOG] Cleanup completed. Exiting.")
+    except Exception as e:
+        print(f"[ERROR] Error during cleanup: {e}")
 
-def extract_lua_table(content, var_name):
-    match = re.search(rf'{var_name}\s*=\s*({{.*?}})', content, re.DOTALL)
-    if not match:
+# Register the cleanup function
+atexit.register(cleanup_before_exit)
+
+#### CORE FUNCTIONS ####
+
+def get_sheets_service():
+    """Create and return a Google Sheets service object."""
+    credentials = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    return build('sheets', 'v4', credentials=credentials)
+
+def extract_lua_table(lua, content, var_name):
+    """Extract a Lua table from content string using the Lua interpreter."""
+    try:
+        lua.execute(content)
+        lua_table = lua.globals()[var_name]
+        return lua_table_to_python(lua_table)
+    except Exception as e:
+        print(f"[ERROR] Error extracting Lua table {var_name}: {e}")
+        return {}
+
+def extract_lua_var(lua, content, var_name, default=None):
+    try:
+        lua.execute(content)
+        
+        if var_name not in lua.globals():
+            print(f"[WARNING] Variable '{var_name}' not found in Lua content")
+            return default
+            
+        value = lua.globals()[var_name]
+        
+        return lua_value_to_python(value)
+    except Exception as e:
+        print(f"[ERROR] Error extracting '{var_name}': {e}")
+        return default
+
+def lua_table_to_python(lua_table):
+    """Convert a Lua table to a Python dictionary or list."""
+    if lua_table is None:
         return {}
     
-    lua_table = match.group(1)
+    # Check if it's a sequence or a dictionary-like table
+    is_sequence = True
+    max_index = 0
     
-    if var_name == "DeathLoggerDB":
-        # For DeathLoggerDB (numeric keys with string values)
-        # Replace boolean and nil values to Python equivalents
-        py_compatible = lua_table.replace('true', 'True').replace('false', 'False').replace('nil', 'None')
-        # Convert Lua numeric keys [1] = ... into Python's 1: ... format.
-        py_compatible = re.sub(r'\[(\d+)\]\s*=', r'\1:', py_compatible)
-        # Remove any trailing comma before the closing brace which is invalid in Python dictionaries.
-        py_compatible = re.sub(r',\s*}', '}', py_compatible)
-        try:
-            return ast.literal_eval(py_compatible)
-        except Exception as e:
-            print(f"[WARNING] Failed to parse {var_name} table:", e)
-            return {}
+    # First pass to determine if it's a sequence
+    for k, v in lua_table.items():
+        if isinstance(k, int) and k > 0:
+            max_index = max(max_index, k)
+        else:
+            is_sequence = False
+            break
     
-    elif var_name == "LastLogonDB":
-        # For LastLogonDB (string keys with date string values)
+    if is_sequence and max_index > 0:
+        # Convert to a Python list
+        result = [None] * max_index
+        for i in range(1, max_index + 1):  # Lua tables are 1-indexed
+            if i in lua_table:
+                value = lua_table[i]
+                result[i-1] = lua_value_to_python(value)
+        return result
+    else:
+        # Convert to a Python dictionary
         result = {}
-        # Find all entries like: ["CharacterName"] = "25-04-15 04:26:43",
-        entries = re.findall(r'\["([^"]+)"\]\s*=\s*"([^"]+)"', lua_table)
-        for char_name, timestamp_str in entries:
-            result[char_name] = timestamp_str
+        for k, v in lua_table.items():
+            python_key = lua_value_to_python(k)
+            python_value = lua_value_to_python(v)
+            result[python_key] = python_value
+        return result
+
+def lua_value_to_python(value):
+    """Convert a Lua value to its Python equivalent."""
+    if value is None:
+        return None
+    
+    value_type = type(value)
+    
+    # Handle bytes conversion to string
+    if isinstance(value, bytes):
+        return value.decode('utf-8')
+    
+    # If it's a basic type, return as is
+    if value_type in (int, float, bool, str):
+        return value
+    
+    # If it's a Lua table, convert recursively
+    if hasattr(value, 'items'):
+        return lua_table_to_python(value)
+    
+    # Default case
+    return str(value)
+
+def python_to_lua_table(lua, data, var_name=None):
+    """Convert a Python dictionary or list to a Lua table string."""
+    if isinstance(data, dict):
+        lua_table = lua.table()
+        for k, v in data.items():
+            lua_table[k] = python_to_lua_value(lua, v)
+    elif isinstance(data, list):
+        lua_table = lua.table()
+        for i, v in enumerate(data, 1):  # Lua tables are 1-indexed
+            lua_table[i] = python_to_lua_value(lua, v)
+    else:
+        return str(data)
+    
+    # Get the table as a string
+    table_to_string = lua.globals().table_to_string
+    lua_str = table_to_string(lua_table)
+    
+    # Convert from bytes to string if needed
+    if isinstance(lua_str, bytes):
+        table_str = lua_str.decode('utf-8')
+    else:
+        table_str = str(lua_str)
+    
+    # Return as an assignment if var_name is provided
+    if var_name:
+        return f"{var_name} = {table_str}"
+    else:
+        return table_str
+
+def python_to_lua_value(lua, value):
+    """Convert a Python value to its Lua equivalent."""
+    if value is None:
+        return None
+    elif isinstance(value, (int, float, bool, str)):
+        return value
+    elif isinstance(value, dict):
+        lua_table = lua.table()
+        for k, v in value.items():
+            lua_table[k] = python_to_lua_value(lua, v)
+        return lua_table
+    elif isinstance(value, list):
+        lua_table = lua.table()
+        for i, v in enumerate(value, 1):  # Lua tables are 1-indexed
+            lua_table[i] = python_to_lua_value(lua, v)
+        return lua_table
+    else:
+        return str(value)
+
+# GOOGLE SHEETS FUNCTIONS
+
+def get_sheet_data(service, sheet_name):
+    """Get data from a specific sheet."""
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"{sheet_name}!A1:Z1000"
+        ).execute()
+        
+        values = result.get('values', [])
+        
+        if not values:
+            print(f"[LOG] No data found in {sheet_name}")
+            return []
+            
+        return values
+    except Exception as e:
+        print(f"[ERROR] Error getting sheet data: {e}")
+        return []
+
+def clear_sheet(service, sheet_name):
+    """Clear all data from a specific sheet."""
+    try:
+        service.spreadsheets().values().clear(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"{sheet_name}!A1:Z1000",
+            body={}
+        ).execute()
+        print(f"[LOG] Cleared {sheet_name} sheet")
+    except Exception as e:
+        print(f"[ERROR] Error clearing sheet: {e}")
+
+def update_sheet(service, sheet_name, data):
+    """Update a specific sheet with new data."""
+    try:
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"{sheet_name}!A1",
+            valueInputOption="RAW",
+            body={"values": data}
+        ).execute()
+        print(f"[LOG] Updated {sheet_name} sheet")
+    except Exception as e:
+        print(f"[ERROR] Error updating sheet: {e}")
+
+def add_sheet_table_value(service, lua, sheet_name, table_name, value):
+    """
+    Add a value to an indexed table in Google Sheets.
+    Automatically finds the next available index.
+    Designed for tables like DeathLoggerDB where keys are sequential indices.
+    """
+    try:
+        # Get current sheet data
+        sheet_data = get_sheet_data(service, sheet_name)
+        
+        # Find the highest index currently in use
+        highest_index = 0
+        if sheet_data and len(sheet_data) > 1:  # If there's data beyond the header
+            try:
+                # Assuming first column contains indices
+                indices = [int(row[0]) for row in sheet_data[1:] if row and row[0] and str(row[0]).isdigit()]
+                if indices:
+                    highest_index = max(indices)
+            except Exception as e:
+                print(f"[ERROR] Error finding highest index: {e}")
+        
+        # Use the next available index
+        next_index = highest_index + 1
+        
+        # Prepare the new row
+        if table_name == "DeathLoggerDB":
+            new_row = [next_index, value]
+        else:
+            # For other table types
+            new_row = [next_index, str(value)]
+        
+        # Add the new row to the sheet
+        if sheet_data:
+            sheet_data.append(new_row)
+            update_sheet(service, sheet_name, sheet_data)
+        else:
+            # If sheet is empty, create with header
+            if table_name == "DeathLoggerDB":
+                header = ["ID", "Log Entry"]
+            else:
+                header = ["Index", "Value"]
+            update_sheet(service, sheet_name, [header, new_row])
+        
+        print(f"[LOG] Added new entry at index {next_index} to {sheet_name}")
+        return next_index
+    except Exception as e:
+        print(f"[ERROR] Error adding value to sheet: {e}")
+        return None
+
+# CONVERSION FUNCTIONS
+
+def lua_to_sheet_format(data, table_name):
+    """Convert Lua table data (in Python form) to Google Sheets format."""
+    if table_name == "DeathLoggerDB":
+        # For indexed log entries
+        sheet_data = [["ID", "Log Entry"]]
+        if isinstance(data, dict):
+            for idx, log_entry in sorted(data.items()):
+                sheet_data.append([idx, log_entry])
+        elif isinstance(data, list):
+            for i, log_entry in enumerate(data, 1):
+                sheet_data.append([i, log_entry])
+        return sheet_data
+    
+    elif table_name == "LastLogonDB":
+        # For character-timestamp mapping
+        sheet_data = [["Character", "Last Logon"]]
+        for char_name, timestamp in sorted(data.items()):
+            sheet_data.append([char_name, timestamp])
+        return sheet_data
+    
+    elif table_name == "CharacterProfessionsDB":
+        # For character professions data
+        sheet_data = [["Character", "Profession String", "Last Modified"]]
+        for char_name, char_data in sorted(data.items()):
+            sheet_data.append([
+                char_name,
+                char_data.get("professionString", ""),
+                char_data.get("lastModified", "")
+            ])
+        return sheet_data
+    
+    return []
+
+def sheet_to_lua_format(sheet_data, table_name):
+    """Convert Google Sheets data to Lua table format (in Python form)."""
+    if not sheet_data or len(sheet_data) <= 1:  # Empty or just header
+        return {}
+    
+    if table_name == "DeathLoggerDB":
+        result = {}
+        # Skip header row
+        for i in range(1, len(sheet_data)):
+            row = sheet_data[i]
+            if len(row) >= 2:
+                try:
+                    idx = int(row[0])
+                    log_entry = row[1]
+                    result[idx] = log_entry
+                except (ValueError, IndexError) as e:
+                    print(f"[ERROR] Error converting row {i} to Lua: {e}")
+        return result
+    
+    elif table_name == "LastLogonDB":
+        result = {}
+        # Skip header row
+        for i in range(1, len(sheet_data)):
+            row = sheet_data[i]
+            if len(row) >= 2:
+                char_name = row[0]
+                timestamp = row[1]
+                result[char_name] = timestamp
+        return result
+    
+    elif table_name == "CharacterProfessionsDB":
+        result = {}
+        # Skip header row
+        for i in range(1, len(sheet_data)):
+            row = sheet_data[i]
+            if len(row) >= 3:
+                char_name = row[0]
+                result[char_name] = {
+                    'professionString': row[1],
+                    'lastModified': row[2]
+                }
         return result
     
     return {}
 
+# FILE OPERATIONS
 
-
-# Looks for a line in the Lua file like "ShouldRefresh = true" or "false"
-# and returns the corresponding Python boolean.
-def extract_bool_var(content, var_name):
-    match = re.search(rf'{var_name}\s*=\s*(true|false)', content, re.IGNORECASE)
-    return match.group(1).lower() == 'true' if match else False
-
-# Updates or inserts a Lua-style boolean assignment (true/false).
-def set_bool_var(content, var_name, value):
-    lua_value = 'true' if value else 'false'
-    pattern = rf'({var_name}\s*=\s*)(true|false)'
-    
-    if re.search(pattern, content, re.IGNORECASE):
-        # Replace existing assignment
-        return re.sub(pattern, rf'\1{lua_value}', content, flags=re.IGNORECASE)
-    else:
-        # Add the variable at the end if not present
-        return content.rstrip() + f'\n{var_name} = {lua_value}\n'
-
-# Replaces the Lua table assigned to `var_name` with new_table_str.
-# Matches:
-#   DeathLoggerDB = { ... }
-# And replaces the contents with the new table string.
-def replace_table_in_lua(content, var_name, new_table_str):
-    pattern = rf'({var_name}\s*=\s*){{.*?}}'
-    patternSub = re.sub(pattern, rf'\1{new_table_str}', content, flags=re.DOTALL) 
-    return patternSub
-
-
-# Replaces the Lua boolean assigned to `var_name` with `true` or `false`.
-def replace_bool_in_lua(content, var_name, value):
-    lua_value = 'true' if value else 'false'
-    pattern = rf'({var_name}\s*=\s*)(true|false)'
-
-    # Use lambda to safely reference the matched group
-    new_content = re.sub(pattern, lambda m: m.group(1) + lua_value, content, flags=re.IGNORECASE)
-    return new_content
-
-# Formats a Python dictionary {index: string} into Lua-style table.
-# Example output:
-# {
-#     [1] = "some log string",
-#     [2] = "another entry"
-# }
-def format_python_table_as_lua(py_table):
-    lines = []
-    for index, value in py_table.items():
-        if isinstance(index, int):
-            # For numeric indices (DeathLoggerDB)
-            escaped = value.replace('"', '\\"')  # Escape quotes
-            lines.append(f'\t[{index}] = "{escaped}"')
-        else:
-            # For string indices (LastLogonDB)
-            lines.append(f'\t["{index}"] = {value}')
-    return "{\n" + ",\n".join(lines) + "\n}"
-
-# Formats a Python dictionary for LastLogonDB into Lua-style table
-def format_lastlogon_table_as_lua(py_table):
-    lines = []
-    for char_name, timestamp in py_table.items():
-        # Format the timestamp without quotes (as it appears in the file)
-        lines.append(f'\t["{char_name}"] = "{timestamp}"')
-    return "{\n" + ",\n".join(lines) + "\n}"
-
-# Extracts the timestamp (as float) from a log entry.
-# Format: "[25-04-08 21:31:26]..."
-def extract_timestamp(log_str):
-    match = re.search(r'(\d{2}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', log_str)
-    if not match:
-        return None
+def read_lua_file(file_path):
+    """Read a Lua file and return its content."""
     try:
-        return time.mktime(time.strptime(match.group(1), "%y-%m-%d %H:%M:%S"))
-    except:
-        return None
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except UnicodeDecodeError:
+        # Try with different encoding if UTF-8 fails
+        with open(file_path, 'r', encoding='cp1252') as f:
+            return f.read()
 
-# Checks if a new log string is a duplicate of any in the existing dict (based on timestamp within 30s)
-def is_duplicate(new_log_str, existing_log_strs):
-    new_ts = extract_timestamp(new_log_str)
-    if new_ts is None:
+def write_lua_file(file_path, content):
+    """Write content to a Lua file."""
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+def update_lua_table_in_file(lua, file_path, var_name, new_data):
+    """Update a specific Lua table in a file without affecting other content."""
+    try:
+        # Read the current file content
+        content = read_lua_file(file_path)
+        
+        # Load all existing variables from the file
+        lua.execute(content)
+        
+        # Update the specified table with new data
+        if var_name in lua.globals():
+            # Convert new_data to Lua
+            lua_table = lua.table()
+            if isinstance(new_data, dict):
+                for k, v in new_data.items():
+                    lua_table[k] = python_to_lua_value(lua, v)
+            elif isinstance(new_data, list):
+                for i, v in enumerate(new_data, 1):
+                    lua_table[i] = python_to_lua_value(lua, v)
+            
+            # Assign to the global variable
+            lua.globals()[var_name] = lua_table
+        else:
+            # If variable doesn't exist, create it
+            lua.execute(f"{var_name} = {{}}")
+            # Then update it
+            lua_table = lua.table()
+            if isinstance(new_data, dict):
+                for k, v in new_data.items():
+                    lua_table[k] = python_to_lua_value(lua, v)
+            elif isinstance(new_data, list):
+                for i, v in enumerate(new_data, 1):
+                    lua_table[i] = python_to_lua_value(lua, v)
+            
+            # Assign to the global variable
+            lua.globals()[var_name] = lua_table
+        
+        # Now generate the updated file content
+        variables = []
+        
+        # Get all known table variables
+        table_names = ["DeathLoggerDB", "LastLogonDB", "CharacterProfessionsDB"]
+        for name in table_names:
+            if name in lua.globals():
+                table_data = lua_table_to_python(lua.globals()[name])
+                table_str = python_to_lua_table(lua, table_data, name)
+                variables.append(table_str)
+        
+        # Get boolean variables
+        bool_names = ["SyncLoaded"]
+        for name in bool_names:
+            if name in lua.globals():
+                value = bool(lua.globals()[name])
+                variables.append(f"{name} = {str(value).lower()}")
+        
+        # Get string variables (new)
+        # You can extend this list with known string variable names
+        string_names = ["CurrentCharacter"]
+        for name in string_names:
+            if name in lua.globals():
+                value = lua.globals()[name]
+                if isinstance(value, str):
+                    # Properly escape the string and wrap in quotes
+                    escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
+                    variables.append(f'{name} = "{escaped_value}"')
+        
+        # Check for any other variables that might be in the globals but not in our predefined lists
+        # This is a more generic approach to preserve all variables
+        all_globals = [name for name in lua.globals() 
+                      if not name.startswith('_') and name not in table_names 
+                      and name not in bool_names and name not in string_names
+                      and not callable(lua.globals()[name])]  # Filter out functions
+        
+        for name in all_globals:
+            value = lua.globals()[name]
+            if isinstance(value, str):
+                # Handle strings
+                escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
+                variables.append(f'{name} = "{escaped_value}"')
+            elif isinstance(value, (int, float)):
+                # Handle numbers
+                variables.append(f"{name} = {value}")
+            elif isinstance(value, bool):
+                # Handle booleans
+                variables.append(f"{name} = {str(value).lower()}")
+            # We already handled tables separately above
+        
+        # Combine everything into a new file
+        new_content = "\n\n".join(variables)
+        
+        # Write back to the file
+        write_lua_file(file_path, new_content)
+        print(f"[LOG] Updated {var_name} in {file_path}")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Error updating Lua table: {e}")
         return False
 
-    for log in existing_log_strs.values():
-        existing_ts = extract_timestamp(log)
-        if existing_ts is None:
-            continue
-        if abs(existing_ts - new_ts) <= 30:
+def set_lua_var_in_file(lua, file_path, var_name, value):
+    """
+    Set a variable in a Lua file.
+    Works with various data types (boolean, string, number, table).
+    Preserves ALL existing content in the file and only updates the specific variable.
+    
+    Args:
+        lua: The LuaRuntime instance
+        file_path: Path to the Lua file
+        var_name: Name of the variable to set
+        value: Value to assign (can be bool, str, int, float, dict, list)
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Read the current file content
+        content = read_lua_file(file_path)
+        
+        # Prepare the new value as a string
+        if isinstance(value, bool):
+            value_str = str(value).lower()
+        elif isinstance(value, (int, float)):
+            value_str = str(value)
+        elif isinstance(value, str):
+            value_str = f'"{value}"'
+        elif isinstance(value, (dict, list)):
+            # For complex types, use the table conversion
+            value_str = python_to_lua_table(lua, value).replace(f"{var_name} = ", "")
+        else:
+            value_str = f'"{str(value)}"'
+            
+        # Check if variable already exists in the file
+        import re
+        pattern = re.compile(rf'{var_name}\s*=\s*[^,\r\n]*')
+        match = pattern.search(content)
+        
+        if match:
+            # Variable exists, update it in place
+            old_assignment = match.group(0)
+            new_assignment = f"{var_name} = {value_str}"
+            modified_content = content.replace(old_assignment, new_assignment)
+            
+            print(f"[LOG] Updated existing variable {var_name} in {file_path}")
+        else:
+            # Variable doesn't exist, append it to the end of the file
+            if content and not content.endswith('\n'):
+                modified_content = content + f"\n\n{var_name} = {value_str}"
+            else:
+                modified_content = content + f"{var_name} = {value_str}"
+                
+            print(f"[LOG] Added new variable {var_name} to {file_path}")
+        
+        # Write back to file
+        write_lua_file(file_path, modified_content)
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Error setting variable in Lua file: {e}")
+        return False
+
+# WOW INTEGRATION
+
+def is_wow_running():
+    """Check if WoW is currently running."""
+    for proc in psutil.process_iter(['name']):
+        if proc.info['name'] and "wow" in proc.info['name'].lower():
             return True
     return False
 
-# Merges both local and remote entries into a unified table.
-# Detects if any entries need to be uploaded
-def merge_entries(local_entries, remote_entries):
-    print("[LOG] Merging entries.")
-
-    merged = dict(remote_entries)
-    needsUpload = False
-    needsUpdate = False
-    next_index = max(merged.keys(), default=0) + 1
-
-    # Merge local to remote
-    for log in local_entries.values():
-        if not is_duplicate(log, remote_entries):
-            merged[next_index] = log
-            next_index += 1
-            needsUpload = True
-        # else:
-        #     print("[LOG] local found duplicate in remote, not addint it!")
-            
-    # Merge remote to local
-    next_index = len(local_entries) + 1
-    for log in remote_entries.values():
-        if not is_duplicate(log, local_entries):
-            merged[next_index] = log
-            next_index += 1
-            needsUpdate = True
-        # else:
-        #     print("[LOG] remote found duplicate in local, not adding it!")
-
-    # Sort merged entries by timestamp
-    sorted_items = sorted(
-        merged.items(),
-        key=lambda item: extract_timestamp(item[1]) or 0
-    )
-    merged_sorted = {i + 1: log for i, (_, log) in enumerate(sorted_items)}
-
-    return merged_sorted, needsUpload, needsUpdate
-
-
-
-# Clears the remote Lua file, resetting the DeathLoggerDB to an empty table.
-def clear_remote_data(service, file_id):
-    
-    print("[LOG] Clearing Remote Data")
-    global shouldReset
-    shouldReset = False
-
-    empty_content = "DeathLoggerDB = { }"
-
-    try:
-        from googleapiclient.http import MediaInMemoryUpload
-        media = MediaInMemoryUpload(empty_content.encode('utf-8'), mimetype='text/plain')
-        response = service.files().update(fileId=file_id, media_body=media).execute()
-        if response and 'id' in response:
-            print("[LOG] Remote database has been cleared successfully.")
-        else:
-            print("[WARNING] Clearing remote file completed, but no confirmation ID returned.")
-    except Exception as e:
-        print(f"[ERROR] Failed to clear remote data: {e}")
-
 def sync_ready_start_wow():
-
-    # Creating a sync_ready flag for the .bat file to know it´s ready to close.
+    """Start WoW after sync is complete."""
+    # Creating a sync_ready flag for the .bat file to know it's ready to close.
     with open("sync_ready.flag", "w") as f:
         f.write("ready")
 
@@ -284,9 +627,8 @@ def sync_ready_start_wow():
 
     # Then launch it
     try:
-        global wow_process
+        global wow_process, isGameRunning
         wow_process = subprocess.Popen([exe_path])
-        global isGameRunning
         isGameRunning = True
         
     except FileNotFoundError:
@@ -295,165 +637,323 @@ def sync_ready_start_wow():
 
     print("[LOG] Launching Turtle WoW... Please dont close this window while playing!")
 
+# MAIN SYNC FUNCTION
 
-# A check to see if wow process is running
-def is_wow_running():
-    for proc in psutil.process_iter(['name']):
-        if proc.info['name'] and "wow" in proc.info['name'].lower():
-            return True
-    return False
-
-
-# SYNC LOOP UPDATE
 def sync_loop():
-    service = get_drive_service()
-    file_id = find_or_create_file(service, FILE_NAME)
-    last_modified = None
+    """Main sync loop that periodically checks for changes and syncs with Google Sheets."""
+    service = get_sheets_service()
+    lua = initialize_lua()
+    
+    global_last_modified = None
+    local_last_modified = None
 
     # Check if SavedVariables file exists or we create one
-    if not os.path.exists(LOCAL_FILE_PATH):
-        print(f"[LOG] File '{LOCAL_FILE_PATH}' does not exist. Creating it...")
-        with open(LOCAL_FILE_PATH, 'w', encoding='cp1252') as f:
-            f.write("DeathLoggerDB = { }\nLastLogonDB = { }\nSyncLoaded = false")
+    if not os.path.exists(GLOBAL_ACCOUNT_PATH):
+        print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' does not exist. Creating it...")
+        with open(GLOBAL_ACCOUNT_PATH, 'w', encoding='cp1252') as f:
+            f.write("DeathLoggerDB = { }\nLastLogonDB = { }\nCharacterProfessionsDB = { }\nSyncLoaded = false")
 
     print(f"[LOG] Syncing with online database...")
 
     while True:
         try:
-
-            global isFirstCheck
+            global LOCAL_CHARACTER_PATH
+            global isFirstCheck, isGameRunning, shouldReset 
 
             # Check if WoW is still running or we exit
             if isGameRunning and not is_wow_running():
-                
-                # Set SyncLoaded to: false
-                with open(LOCAL_FILE_PATH, 'r') as f:
-                    local_content = f.read()
-
-                local_content = replace_bool_in_lua(local_content, "SyncLoaded", False)
-
-                with open(LOCAL_FILE_PATH, 'w') as f:
-                    f.write(local_content)
-
                 print("[LOG] WoW has exited. Shutting down sync.")
                 break
-                # Exit the sync loop
+            
+            # Lets not check local character stuff on first run as we might have changed character.
+            if not isFirstCheck:
 
-            #Get stats and see if local file has been modified
-            stat = os.stat(LOCAL_FILE_PATH)
-            mod_time = stat.st_mtime
+                #Get local character savedVariables and see if file modified
+                local_file_stats = os.stat(LOCAL_CHARACTER_PATH)
+                local_mod_time = local_file_stats.st_mtime
 
-            if shouldReset:
-                clear_remote_data(service, file_id)
+                if local_last_modified is None or local_mod_time != local_last_modified:
 
-            elif last_modified is None or mod_time != last_modified:
+                    print("[LOG] Local changes detected!")
+                    content = read_lua_file(LOCAL_CHARACTER_PATH)
+                    
+                    death_logger_data = extract_lua_table(lua, content, "LocalDeathLoggerDB")
+                    if death_logger_data:
+                        print("[LOG] Trying to update remote with LocalDeathLoggerDB...")
+                        upload_death_log(death_logger_data[0])
+
+                    character_profession_data = extract_lua_table(lua, content, "LocalCharacterProfessionsDB")
+                    if character_profession_data:
+                        
+                        # Get the first character name (first key in the dictionary)
+                        print("[LOG] Trying to update remote with LocalCharacterProfessionsDB...")
+                        character = next(iter(character_profession_data))
+                        
+                        # Get the professionString and lastModified for this character
+                        profession_string = character_profession_data[character]["professionString"]
+                        last_modified = character_profession_data[character]["lastModified"]
+                        
+                        # Call update_character_professions with the extracted values
+                        update_character_professions(character, profession_string, last_modified)
+
+
+                    last_logon_data = extract_lua_table(lua, content, "LocalLastLogonDB")
+                    if last_logon_data:
+
+                        print("[LOG] Trying to update remote with LocalLastLogonDB...")
+                        # Get the first character name (first key in the dictionary)
+                        character = next(iter(last_logon_data))
+                        
+                        # Get the last logon timestamp directly (it's just a string value)
+                        last_logon = last_logon_data[character]
+                        
+                        # Now you can use this data as needed
+                        update_last_logon(character, last_logon)
+
+                    # Update last_modified
+                    local_file_stats = os.stat(LOCAL_CHARACTER_PATH)
+                    local_last_modified = local_file_stats.st_mtime
+
+
+            # Get global savedVariables and see if file modified
+            global_file_stats = os.stat(GLOBAL_ACCOUNT_PATH)
+            global_mod_time = global_file_stats.st_mtime
+
+            if global_last_modified is None or global_mod_time != global_last_modified:
                     
                 if isFirstCheck:
-                    print("[LOG] Doing initial data check...") 
-                    
+                    print("[LOG] Doing initial setup...") 
                 else:
-                    print("[LOG] Local file change detected.")
+                    print("[LOG] Global file change detected.")
 
-                with open(LOCAL_FILE_PATH, 'r') as f:
-                    local_content = f.read()
+                content = read_lua_file(GLOBAL_ACCOUNT_PATH)
+                content = content.strip()
+                if content:
 
-               
-                should_refresh = extract_bool_var(local_content, "ShouldRefresh")
-                if should_refresh:
-                    print("[LOG] Refreshing local file from database (ShouldRefresh = true)")
-                    download_file(service, file_id, FILE_NAME)
-                    continue
-
-                if ('DeathLoggerDB' and 'LastLogonDB') in local_content:
-                    print("[LOG] Syncing changes...")
-
-                    # Step 1: Download remote copy
-                    download_file(service, file_id, TEMP_REMOTE_COPY)
-                    with open(TEMP_REMOTE_COPY, 'r') as f:
-                        remote_content = f.read()
-
-                    # Step 2: Extract and merge DeathLoggerDB
-                    local_deathlog = extract_lua_table(local_content, "DeathLoggerDB")
-                    remote_deathlog = extract_lua_table(remote_content, "DeathLoggerDB")
-                    # Step 2: Extract and merge DeathLoggerDB
-                    local_deathlog = extract_lua_table(local_content, "DeathLoggerDB")
-                    remote_deathlog = extract_lua_table(remote_content, "DeathLoggerDB")
-
-                    merged_deathlog, needsUpload_deathlog, needsUpdate_deathlog = merge_entries(local_deathlog, remote_deathlog)
+                    currentCharacter = extract_lua_var(lua, content, "CurrentCharacter", default= "")
                     
-                    # Step 3: Extract LastLogonDB from both local and remote
-                    local_lastlogon = extract_lua_table(local_content, "LastLogonDB")
-                    remote_lastlogon = extract_lua_table(remote_content, "LastLogonDB")
-                    
-                    # Merge LastLogonDB (one-way from client to server)
-                    merged_lastlogon = dict(remote_lastlogon)
-                    needsUpload_lastlogon = False
-                    
-                    # Update any character entries from local to remote
-                    for character, timestamp in local_lastlogon.items():
-                        if character not in merged_lastlogon or timestamp != merged_lastlogon.get(character, ""):
-                            merged_lastlogon[character] = timestamp
-                            needsUpload_lastlogon = True
-                            print(f"[LOG] Updating timestamp for character: {character}")
-                    
-                        # Step 4: Generate updated content
-                    deathlog_table_str = format_python_table_as_lua(merged_deathlog)
-                    lastlogon_table_str = format_lastlogon_table_as_lua(merged_lastlogon)
-                    
-                    # First update local file with only merged DeathLoggerDB (not LastLogonDB)
-                    local_updated_content = replace_table_in_lua(local_content, "DeathLoggerDB", deathlog_table_str)
-
-                    if isFirstCheck:
-                        local_updated_content = replace_bool_in_lua(local_updated_content, "SyncLoaded", True)
-
-                    # Update remote content with both tables for upload purposes
-                    remote_updated_content = replace_table_in_lua(remote_content, "DeathLoggerDB", deathlog_table_str)
-                    remote_updated_content = replace_table_in_lua(remote_updated_content, "LastLogonDB", lastlogon_table_str)
-                    
-                    needsUpload = needsUpload_deathlog or needsUpload_lastlogon
-                    needsUpdate = needsUpdate_deathlog
-
-                    if needsUpdate or isFirstCheck:
-
-                        if (needsUpdate):
-                            print("[LOG] New DeathLoggerDB entries detected - updating local file!")
-                        else:
-                            print("[LOG] Doing first run sync variable update.")
-
-                        # Only write DeathLoggerDB changes to local file
-                        with open(LOCAL_FILE_PATH, 'w') as f:
-                            f.write(local_updated_content)
-                       
-                    
-                    # Upload if either DeathLoggerDB or LastLogonDB needs updates
-                    if needsUpload:
-                        global shouldNotUpload
-                        if shouldNotUpload:
-                            print("[LOG] Skipped upload.")
-                            if shouldStartGame:
-                                sync_ready_start_wow()
-                            continue
-
-                        print("[LOG] Uploading to remote database...")
-                        
-                        # Write the full updated content to temp file for upload
-                        with open(TEMP_REMOTE_COPY, 'w') as f:
-                            f.write(remote_updated_content)
-                            
-                        upload_file(service, file_id, TEMP_REMOTE_COPY)
-                        print("[LOG] Uploaded merged file to database.")
+                    if currentCharacter:
+                        print("[LOG] CurrentCharacter detected: " + currentCharacter + ". Setting local character path..")
+                        LOCAL_CHARACTER_PATH = "../../../WTF/Account/" + accountName + "/Nordanaar/CHARACTERNAME/SavedVariables/SaellskapsresanMod.lua"
+                        LOCAL_CHARACTER_PATH = LOCAL_CHARACTER_PATH.replace("CHARACTERNAME", currentCharacter)
+                        print("[LOG] LOCAL_CHARACTER_PATH: " + LOCAL_CHARACTER_PATH)
                     else:
-                        print("[LOG] No new entries to merge.")
-                    
-                     # Get the new modification time after writing to the file
-                    stat = os.stat(LOCAL_FILE_PATH)
-                    last_modified = stat.st_mtime
+                        print("[LOG] Current character not set. Should prompt user to reload!")
+                else:
+                     print("[WARNING] Global Account path NOT detected.")
+
+
+                
+                if isFirstCheck:
+                    download_all_tables()
+                    isFirstCheck = False
+                    # Set SyncLoaded to true on first check
+                    set_lua_var_in_file(lua, GLOBAL_ACCOUNT_PATH, "SyncLoaded", True)
                     
                     if shouldStartGame:
                         sync_ready_start_wow()
+                else:
+                    download_all_tables()
+                
+                # Update last_modified
+                global_file_stats = os.stat(GLOBAL_ACCOUNT_PATH)
+                global_last_modified = global_file_stats.st_mtime
+        
         except Exception as e:
             print(f"[WARNING] Error: {e}")
 
         time.sleep(2)
+
+# UTILITY FUNCTIONS
+
+def upload_death_log(log_entry):
+    """Add a death log entry to the DeathLoggerDB sheet."""
+    service = get_sheets_service()
+    lua = initialize_lua()
+    
+    index = add_sheet_table_value(service, lua, DEATH_LOGGER_SHEET, "DeathLoggerDB", log_entry)
+    
+    # if index:
+    #     # Update local file too
+    #     content = read_lua_file(GLOBAL_ACCOUNT_PATH)
+    #     data = extract_lua_table(lua, content, "DeathLoggerDB")
+        
+    #     if isinstance(data, dict):
+    #         data[index] = log_entry
+    #     elif isinstance(data, list):
+    #         while len(data) < index:
+    #             data.append(None)
+    #         data[index-1] = log_entry
+            
+    #     update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "DeathLoggerDB", data)
+    #     print(f"[LOG] Added death log entry at index {index}")
+    #     return True
+    
+    # return False
+
+def update_last_logon(character, timestamp):
+    """Update a character's last logon timestamp."""
+    service = get_sheets_service()
+    lua = initialize_lua()
+    
+    # Get current data
+    content = read_lua_file(GLOBAL_ACCOUNT_PATH)
+    data = extract_lua_table(lua, content, "LastLogonDB")
+    
+    # Update the timestamp
+    data[character] = timestamp
+    
+    # Update local file
+    # update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "LastLogonDB", data)
+    
+    # Update sheet
+    sheet_data = lua_to_sheet_format(data, "LastLogonDB")
+    update_sheet(service, LAST_LOGON_SHEET, sheet_data)
+    
+    print(f"[LOG] Updated last logon for {character} to {timestamp}")
+    return True
+
+def update_character_professions(character, profession_string, last_modified=None):
+    """Update a character's profession information."""
+    service = get_sheets_service()
+    lua = initialize_lua()
+    
+    if last_modified is None:
+        last_modified = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Get current data
+    content = read_lua_file(GLOBAL_ACCOUNT_PATH)
+    data = extract_lua_table(lua, content, "CharacterProfessionsDB")
+    
+    # Update the profession data
+    if character not in data:
+        data[character] = {}
+    
+    data[character]["professionString"] = profession_string
+    data[character]["lastModified"] = last_modified
+    
+    # Update local file
+    # update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "CharacterProfessionsDB", data)
+    
+    # Update sheet
+    sheet_data = lua_to_sheet_format(data, "CharacterProfessionsDB")
+    update_sheet(service, CHARACTER_PROFESSIONS_SHEET, sheet_data)
+    
+    print(f"[LOG] Updated professions for {character}")
+    return True
+
+def download_all_tables():
+    """Download all tables from Google Sheets to the local Lua file."""
+    service = get_sheets_service()
+    lua = initialize_lua()
+    
+    for table_name, sheet_name in [
+        ("DeathLoggerDB", DEATH_LOGGER_SHEET),
+        ("LastLogonDB", LAST_LOGON_SHEET),
+        ("CharacterProfessionsDB", CHARACTER_PROFESSIONS_SHEET)
+    ]:
+        sheet_data = get_sheet_data(service, sheet_name)
+        lua_data = sheet_to_lua_format(sheet_data, table_name)
+        update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, table_name, lua_data)
+    
+    print(f"[LOG] Downloaded all tables from Google Sheets")
+    return True
+
+def create_and_share_spreadsheet(admin_email):
+    """
+    Create a new Google Spreadsheet with the required sheets and share it with admin.
+    
+    Args:
+        admin_email: Email address to share the spreadsheet with
+        
+    Returns:
+        The ID of the newly created spreadsheet
+    """
+    # We need additional scope for creating and sharing files
+    credentials = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE,
+        scopes=['https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive']
+    )
+    
+    # Create Drive and Sheets services
+    drive_service = build('drive', 'v3', credentials=credentials)
+    sheets_service = build('sheets', 'v4', credentials=credentials)
+    
+    try:
+        # Create a new spreadsheet with the required sheets
+        spreadsheet_body = {
+            'properties': {'title': 'SaellskapsresanMod'},
+            'sheets': [
+                {'properties': {'title': DEATH_LOGGER_SHEET}},
+                {'properties': {'title': LAST_LOGON_SHEET}},
+                {'properties': {'title': CHARACTER_PROFESSIONS_SHEET}}
+            ]
+        }
+        
+        spreadsheet = sheets_service.spreadsheets().create(body=spreadsheet_body).execute()
+        spreadsheet_id = spreadsheet['spreadsheetId']
+        print(f"[LOG] Created new spreadsheet with ID: {spreadsheet_id}")
+        
+        # Initialize each sheet with headers
+        # DeathLoggerDB headers
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{DEATH_LOGGER_SHEET}!A1",
+            valueInputOption="RAW",
+            body={"values": [["ID", "Log Entry"]]}
+        ).execute()
+        
+        # LastLogonDB headers
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{LAST_LOGON_SHEET}!A1",
+            valueInputOption="RAW",
+            body={"values": [["Character", "Last Logon"]]}
+        ).execute()
+        
+        # CharacterProfessionsDB headers
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{CHARACTER_PROFESSIONS_SHEET}!A1",
+            valueInputOption="RAW",
+            body={"values": [["Character", "Profession String", "Last Modified"]]}
+        ).execute()
+        
+        # Share the spreadsheet with the admin
+        permission = {
+            'type': 'user',
+            'role': 'writer',
+            'emailAddress': admin_email
+        }
+        
+        drive_service.permissions().create(
+            fileId=spreadsheet_id,
+            body=permission,
+            fields='id',
+            sendNotificationEmail=True
+        ).execute()
+        
+        print(f"[LOG] Shared spreadsheet with {admin_email}")
+        
+        # Return the spreadsheet ID for further use
+        return spreadsheet_id
+    
+    except Exception as e:
+        print(f"[ERROR] Error creating/sharing spreadsheet: {e}")
+        return None
+
 if __name__ == "__main__":
+
+    # Create a new spreadsheet and share it with your admin account
+    # You only need to run this once for initial setup
+    # admin_email = "jimmy.saarela@gmail.com"  # Replace with your email
+    # new_spreadsheet_id = create_and_share_spreadsheet(admin_email)
+    # if new_spreadsheet_id:
+    #     print(f"Created and shared new spreadsheet. Use this ID: {new_spreadsheet_id}")
+    #     # You can now update your script with this ID:
+    #     print("Updating spreadsheet_id")
+    #     SPREADSHEET_ID = new_spreadsheet_id
+        
+    # Start the sync loop (main function)
     sync_loop()

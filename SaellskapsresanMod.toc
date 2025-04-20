@@ -5,7 +5,8 @@
 ## Notes: Mod for sällskapsresan
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
-## SavedVariables: DeathLoggerDB, LastLogonDB, SyncLoaded, CharacterProfessionsDB
+## SavedVariablesPerCharacter: LocalCurrentCharacter, LocalDeathLoggerDB, LocalLastLogonDB, LocalCharacterProfessionsDB
+## SavedVariables: CurrentCharacter, DeathLoggerDB, LastLogonDB, SyncLoaded, CharacterProfessionsDB
 ## OptionalDeps: LibStub, CallbackHandler-1.0, LibDataBroker-1.1, AceCore-3.0, AceHook-3.0, LibDBIcon-1.0
 
 #Core files
