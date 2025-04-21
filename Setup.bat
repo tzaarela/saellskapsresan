@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 
 echo Installing Saellskapsresan Mod...
 
-REM === STEP 1: Find or install Python ===
+REM STEP 1: Find or install Python
 set "PYTHON_EXE="
 set "FOUND_STORE_PYTHON=no"
 
@@ -72,7 +72,7 @@ if not defined PYTHON_EXE (
 :python_verified
 echo Python found at: %PYTHON_EXE%
 
-REM === STEP 2: Install Python packages ===
+REM STEP 2: Install Python packages
 echo Installing required Python packages...
 "%PYTHON_EXE%" -m ensurepip --upgrade
 "%PYTHON_EXE%" -m pip install --upgrade pip

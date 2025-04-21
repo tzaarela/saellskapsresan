@@ -14,6 +14,10 @@ systemFrame:RegisterEvent("PLAYER_LOGOUT")
 systemFrame:RegisterEvent("PLAYER_LOGIN")
 systemFrame:RegisterEvent("SKILL_LINES_CHANGED")
 
+--Libs
+local LDB = LibStub("LibDataBroker-1.1")
+local icon = LibStub("LibDBIcon-1.0")
+
 -- Initialize UI function (called in ADDON_LOADED)
 InitializeSystem = function()
     CurrentCharacter = CurrentCharacter or ""
@@ -26,7 +30,7 @@ InitializeSystem = function()
     LocalLastLogonDB = LocalLastLogonDB or {}
     LocalSyncLoaded = LocalSyncLoaded or false
     LocalCharacterProfessionsDB = LocalCharacterProfessionsDB or {}
-    DEFAULT_CHAT_FRAME:AddMessage("Sällskapsresan-Mod v0.1 har initierats!", 1, 0.5, 0)
+    print("[Sällskapsresan] v" .. addonVersion .." har initierats!")
 end
 
 -- local variables
@@ -34,6 +38,7 @@ local LastKiller = "Främmande varelse"
 
 -- local ui-variables
 local MainFrame, StartFrame, DeathLogFrame, StatsFrame, ProfessionsFrame, proffContentFrame, proffFauxScroll, proffScrollFrame, logList
+local deathlogScrollFrame, deathlogContentFrame, deathlogFauxScroll
 
 -- UI Style
 local mainWindowWidth = 700
@@ -137,15 +142,46 @@ local CreateDeathLoggerLayout = function ()
     DeathLogFrame:Hide()
 
 
+    -- Create a FauxScrollFrame
+    deathlogScrollFrame = CreateFrame("Frame", "ProfessionsFauxScrollFrame", DeathLogFrame)
+    deathlogScrollFrame:SetPoint("TOPLEFT", DeathLogFrame, "TOPLEFT", 20, -20)
+    deathlogScrollFrame:SetPoint("BOTTOMRIGHT", DeathLogFrame, "BOTTOMRIGHT", -35, 20)
+    deathlogScrollFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+
+    -- Create the actual scroll frame
+    deathlogFauxScroll = CreateFrame("ScrollFrame", "deathlogScrollFrame", deathlogScrollFrame, "FauxScrollFrameTemplate")
+    deathlogFauxScroll:SetPoint("TOPLEFT", deathlogScrollFrame, "TOPLEFT", 0, 0)
+    deathlogFauxScroll:SetPoint("BOTTOMRIGHT", deathlogScrollFrame, "BOTTOMRIGHT", -16, 0)
+
+    -- Create content frame directly inside the scrollFrame (no SetScrollChild needed)
+    deathlogContentFrame = CreateFrame("Frame", "deathlogContentFrame", deathlogScrollFrame)
+    deathlogContentFrame:SetPoint("TOPLEFT", deathlogScrollFrame, "TOPLEFT", 0, 0)
+    deathlogContentFrame:SetWidth(deathlogScrollFrame:GetWidth() - 16)  -- Adjust for scroll bar
+    deathlogContentFrame:SetHeight(500)  -- Will be adjusted based on content
+
+    -- Add visible background to content frame
+    deathlogContentFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = nil,
+        tile = true, tileSize = 16, edgeSize = 0,
+        insets = { left = 4, right = 4, top = 4, bottom = 4, }
+    })
+    deathlogContentFrame:SetBackdropColor(0.5, 0, 0, 1)
+
     -- Move existing logList content into LogFrame
     logList = CreateFrame("Frame", nil, UIParent)
     logList:SetParent(DeathLogFrame)
     logList:ClearAllPoints()
-    logList:SetPoint("TOPLEFT", DeathLogFrame, "TOPLEFT", 20, -20)
+    logList:SetPoint("TOPLEFT", deathlogContentFrame, "TOPLEFT", 20, -20)
     logList:SetWidth(550)
     logList:SetHeight(340)
 
-    GenerateDeathLog()
+    PopulateDeathLogs()
 end
 
 local CreateStatsLayout = function()
@@ -294,6 +330,7 @@ local CreateNavigationButtons = function ()
 end
 
 local CreateSystemButtons = function ()
+
      -- Close Button
      local close = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
      close:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -20, 20)
@@ -309,7 +346,7 @@ local CreateSystemButtons = function ()
      refresh:SetHeight(25)
      refresh:SetText("Ladda Om")
      refresh:SetScript("OnClick", ReloadUI)
- 
+
      -- Reset Button
      local debugTest = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
      debugTest:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -220, 20)
@@ -319,7 +356,6 @@ local CreateSystemButtons = function ()
      debugTest:SetScript("OnClick", PopulateProfessionsTable)
  
 end
-
 
 -- Open the UI
 OpenUI = function()
@@ -357,22 +393,30 @@ systemFrame:SetScript("OnEvent", function()
             ShowErrorPopup("Du startade inte spelet med Saellskapsresan.bat! Synkningen kommer inte fungera!");
         end
 
+        SSR_CONFIG = SSR_CONFIG or { 
+            minimap = { 
+                hide = false,
+                minimapPos = 225 
+            } 
+        }
+        -- Register minimap button
+        icon:Register("Saellskapsresan", Saellskaspresan.dataObject, SSR_CONFIG.minimap)
+
         deathReportSent = false;
         this.loaded = true
         InitializeSystem();
         
         isGameValid = ValidatePlayerLogin()
-
+        print ("[Sällskapsresan] Allt är okej!") 
     elseif not isGameValid then
-        print("GAME NOT VALID, NEEDS RELOAD")
+        print("[Sällskapsresan] VIKTIGT! Antingen är det första gången du loggar in, eller så har du bytt karaktär. Tryck LADDA OM i addonet eller skriv /reload")
         return
-
    
     elseif event == "SKILL_LINES_CHANGED" then
         -- Update when skills change
         SetCharacterProfessions()
         
-        -- Update table if frame is visible
+        -- Update table if frame is visiblesccd
         if ProfessionsFrame and ProfessionsFrame:IsVisible() then
             PopulateProfessionsTable()
         end
@@ -427,12 +471,9 @@ ValidatePlayerLogin = function()
         LocalLastLogonDB[playerName] = dateTime
         return true
     else
-        print ("NEED RELOAD - BECAUSE CHARACTER SWAP")
-        print("CurrentPlayer: " .. playerName)
-        print("PreviousPlayer: " .. tostring(CurrentCharacter))
         LocalCurrentCharacter = playerName
         CurrentCharacter = playerName
-        ShowErrorPopup("Viktigt! Du har bytt karaktär sen du spelade sist, du måste skriva /reload eller trycka 'Ladda om' i Saellskapsresan Addonet.");
+        ShowErrorPopup("Viktigt! Du har bytt karaktär sen du spelade sist, du måste skriva /reload eller trycka 'Ladda om' i Saellskapsresan Addonet.", "Ladda Om", ReloadUI);
         return false
     end 
 end
@@ -624,7 +665,6 @@ function SetCharacterProfessions()
     end
     
     if next(primaryProfessions) == nil then
-        print("No professions to upload")
         return
     end
 
@@ -647,24 +687,10 @@ function SetCharacterProfessions()
         LocalCharacterProfessionsDB = {}
     end
     
-    print("Saving to LocalCharacterProfessionsDB[" .. tostring(playerName) .. "]")
     LocalCharacterProfessionsDB[playerName] = characterData
     CharacterProfessionsDB[playerName] = characterData
 end
 
-local function CreateDeathLogRow(timestamp, zone, playerName, classColor, level, killer)
-    local enemyColor = "|cffff0000" -- Red
-    local reset = "|r"
-
-    local log = string.format(
-        "%s | %s | %s%s%s [Lvl %d] blev dräpt av %s%s%s",
-        timestamp, zone,
-        classColor, playerName, reset,
-        level,
-        enemyColor, killer, reset
-    )
-        return log;
-end
 
 function SendRandomDeathMessage(level, killer)
     local messages = {
@@ -792,10 +818,8 @@ ReportDeath = function()
     local playerName = UnitName("player")
     local zone = GetZoneText()
     local killer = LastKiller or "en främmande varelse"
-
     local playerClass = UnitClass("player")
     -- local classColor = GetColorFromClassName(playerClass)
-    print("Reporting death: " .. playerName)
     
     local deathMessageTable = {
         zone = zone,
@@ -815,11 +839,11 @@ ReportDeath = function()
     -- DEFAULT_CHAT_FRAME:AddMessage(deathMessage, 1, 0.5, 0)
 end
 
-function GenerateDeathLog()
+function PopulateDeathLogs()
     local deathFontStrings = {}
     -- Ensure the deathFontStrings table exists
     if not deathFontStrings then
-        deathFontStrings = {}  -- Initialize the table if it doesnt exist
+        deathFontStrings = {}  -- Initialize the table if it doesn't exist
     end
 
     -- Clear existing font strings from the UI
@@ -837,17 +861,24 @@ function GenerateDeathLog()
     local yOffset = -20
     local spacing = 20
     
-
-    -- Rebuild the UI from current DB
+    -- Rebuild the UI from current DB with new structure
     -- print("[Sällskapsresan] Uppdaterar " .. tostring(GetTableLength(DeathLoggerDB)) .. "st dödsfall i dödslistan" );
     
     for i, entry in ipairs(DeathLoggerDB or {}) do
         local fontString = logList:CreateFontString("deathEntry"..i, "OVERLAY")
         fontString:SetFont(StandardTextFont.font, StandardTextFont.size, StandardTextFont.flags)
         fontString:SetPoint("TOPLEFT", 0, yOffset - ((i - 1) * spacing) + 20)
-        fontString:SetText(entry)
+        
+        -- Format the death entry text with the new structure
+        local formattedText = entry.timestamp .. " - " .. "(" .. "|cFFFFFF00" .. entry.accountName .. "|r) - " ..  
+                              GetColorFromClassName(entry.playerClass) .. entry.playerName .. "|r".. " (" .. "Level " .. 
+                              entry.level .. ") blev dräpt av " .. 
+                              "|cFFFF0000" .. entry.killer .. "|r" .. " i " .. 
+                              entry.zone
+        
+        fontString:SetText(formattedText)
         fontString:Show()
-        table.insert(deathFontStrings, fontString) -- Track it<<<<<>
+        table.insert(deathFontStrings, fontString) -- Track it
     end
 end
 
@@ -925,14 +956,25 @@ function GetFirstNumberInString(text)
     return nil
 end
 
-function ShowErrorPopup(message)
+function ShowErrorPopup(message, customButtonText, customFunction)
     StaticPopupDialogs["SALLSKAPSRESAN_ERROR"] = {
         text = message,
-        button1 = "OK",
+        button1 = "Ok",
+        button2 = customButtonText or "Avbryt",
         timeout = 0,
         whileDead = 1,
         hideOnEscape = 1,
         preferredIndex = 3,
+        OnAccept = function()
+            -- This function will run when button1 ("OK") is clicked
+            -- You can leave this empty or add functionality if needed
+        end,
+        OnCancel = function()
+            -- This function will run when button2 is clicked
+            if customFunction and type(customFunction) == "function" then
+                customFunction()
+            end
+        end,
     }
     StaticPopup_Show("SALLSKAPSRESAN_ERROR")
 end
@@ -943,10 +985,6 @@ SLASH_SSR3 = "/sällskapsresan"
 SLASH_SSR4 = "/saellskapsresan"
 SlashCmdList["SSR"] = OpenUI
 
-
-local LDB = LibStub("LibDataBroker-1.1")
-local icon = LibStub("LibDBIcon-1.0")
-
 Saellskaspresan = {}
 Saellskaspresan.dataObject = LDB:NewDataObject("Saellskapsresan", {
     type = "data source",
@@ -956,13 +994,11 @@ Saellskaspresan.dataObject = LDB:NewDataObject("Saellskapsresan", {
         OpenUI();
     end,
     OnTooltipShow = function(tooltip)
-        tooltip:AddLine("Saellskapsresan")
-        tooltip:AddLine("Click to open!")
+        tooltip:AddLine("Sällskapsresan")
+        tooltip:AddLine("Öppna!")
     end,
 })
 
-SSR_DB = SSR_DB or { minimap = { hide = false } }
 
-icon:Register("Saellskapsresan", Saellskaspresan.dataObject, SSR_DB.minimap)
- -- UnitXP("debug", "breakpoint");
+
 

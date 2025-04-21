@@ -2,12 +2,12 @@
 cd /d "%~dp0"
 setlocal enabledelayedexpansion
 
-REM === CONFIG ===
+REM CONFIG
 set PYTHON_EXEC=python
 set SYNC_SCRIPT=runscript.py
 set FLAG_FILE=sync_ready.flag
 
-REM === Start sync script ===
+REM Start sync script
 echo Starting sync script...
 
 REM Clean up old flag

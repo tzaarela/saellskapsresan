@@ -11,12 +11,12 @@ from datetime import datetime
 
 # Read account name
 with open("accountname.txt", "r") as f:
-    accountName = f.read().strip().upper()
+    currentAccountName = f.read().strip().upper()
 path = "../../../WTF/Account/ACCOUNTNAME/SavedVariables/SaellskapsresanMod.lua"
 
 # Constants
-GLOBAL_ACCOUNT_PATH = path.replace("ACCOUNTNAME", accountName)
-LOCAL_CHARACTER_PATH = "../../../WTF/Account/" + accountName + "/Nordanaar/CHARACTERNAME/SavedVariables/SaellskapsresanMod.lua" #We set characterName later in code.
+GLOBAL_ACCOUNT_PATH = path.replace("ACCOUNTNAME", currentAccountName)
+LOCAL_CHARACTER_PATH = "../../../WTF/Account/" + currentAccountName + "/Nordanaar/CHARACTERNAME/SavedVariables/SaellskapsresanMod.lua" #We set characterName later in code.
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SERVICE_ACCOUNT_FILE = 'service-account.json'
 SPREADSHEET_ID = '1IarFvH3gl3y1MGlId3SwrvqLVfYiIR8KwX3dOE8R5II'  # Set this to your spreadsheet ID
@@ -292,62 +292,13 @@ def update_sheet(service, sheet_name, data):
     except Exception as e:
         print(f"[ERROR] Error updating sheet: {e}")
 
-def add_sheet_table_value(service, lua, sheet_name, table_name, value):
-    """
-    Add a value to an indexed table in Google Sheets.
-    Automatically finds the next available index.
-    Designed for tables like DeathLoggerDB where keys are sequential indices.
-    """
-    try:
-        # Get current sheet data
-        sheet_data = get_sheet_data(service, sheet_name)
-        
-        # Find the highest index currently in use
-        highest_index = 0
-        if sheet_data and len(sheet_data) > 1:  # If there's data beyond the header
-            try:
-                # Assuming first column contains indices
-                indices = [int(row[0]) for row in sheet_data[1:] if row and row[0] and str(row[0]).isdigit()]
-                if indices:
-                    highest_index = max(indices)
-            except Exception as e:
-                print(f"[ERROR] Error finding highest index: {e}")
-        
-        # Use the next available index
-        next_index = highest_index + 1
-        
-        # Prepare the new row
-        if table_name == "DeathLoggerDB":
-            new_row = [next_index, value]
-        else:
-            # For other table types
-            new_row = [next_index, str(value)]
-        
-        # Add the new row to the sheet
-        if sheet_data:
-            sheet_data.append(new_row)
-            update_sheet(service, sheet_name, sheet_data)
-        else:
-            # If sheet is empty, create with header
-            if table_name == "DeathLoggerDB":
-                header = ["Index", "timestamp", "playerName", "playerClass", "level", "killer", "zone"]
-            else:
-                header = ["Index", "Value"]
-            update_sheet(service, sheet_name, [header, new_row])
-        
-        print(f"[LOG] Added new entry at index {next_index} to {sheet_name}")
-        return next_index
-    except Exception as e:
-        print(f"[ERROR] Error adding value to sheet: {e}")
-        return None
-
 # CONVERSION FUNCTIONS
 
 def lua_to_sheet_format(data, table_name):
     """Convert Lua table data (in Python form) to Google Sheets format."""
     if table_name == "DeathLoggerDB":
         # For indexed log entries
-        sheet_data = [["Index", "timestamp", "playerName", "playerClass", "level", "killer", "zone"]]
+        sheet_data = [["Index", "timestamp", "playerName", "playerClass", "level", "killer", "zone", "accountName"]]
         if isinstance(data, dict):
             for idx, log_entry in sorted(data.items()):
                 sheet_data.append([idx, log_entry])
@@ -386,14 +337,20 @@ def sheet_to_lua_format(sheet_data, table_name):
         # Skip header row
         for i in range(1, len(sheet_data)):
             row = sheet_data[i]
-            if len(row) >= 2:
-                try:
-                    idx = int(row[0])
-                    log_entry = row[1]
-                    result[idx] = log_entry
-                except (ValueError, IndexError) as e:
-                    print(f"[ERROR] Error converting row {i} to Lua: {e}")
+            
+            if len(row) >= 8:
+                index = int(row[0])
+                result[index] = {
+                    'timestamp': row[1],
+                    'playerName': row[2],
+                    'playerClass': row[3],
+                    'level': row[4],
+                    'killer': row[5],
+                    'zone': row[6],
+                    'accountName': row[7]
+                }
         return result
+           
     
     elif table_name == "LastLogonDB":
         result = {}
@@ -438,6 +395,69 @@ def write_lua_file(file_path, content):
     with open(file_path, 'w', encoding='utf-8') as f:
         f.write(content)
 
+def clear_lua_table_in_file(file_path, table_name):
+    """
+    Clears a Lua table in a file by replacing its contents with an empty table
+    while preserving all other content in the file.
+    
+    Args:
+        file_path (str): Path to the Lua file
+        table_name (str): Name of the Lua table to clear
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Read the file content
+        with open(file_path, 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+        
+        # Find the table in the file
+        table_start_line = -1
+        table_end_line = -1
+        inside_table = False
+        brace_count = 0
+        
+        for i, line in enumerate(lines):
+            # Look for the table declaration
+            if table_start_line == -1 and f"{table_name} = " in line and "{" in line:
+                table_start_line = i
+                inside_table = True
+                brace_count = line.count("{") - line.count("}")
+                
+                # If the table opens and closes on the same line
+                if brace_count == 0:
+                    table_end_line = i
+                    break
+            
+            # If we're inside the table, track braces to find the end
+            elif inside_table:
+                brace_count += line.count("{") - line.count("}")
+                
+                if brace_count == 0:
+                    table_end_line = i
+                    break
+        
+        # If we found the table
+        if table_start_line != -1 and table_end_line != -1:
+            # Create a new list of lines with the table cleared
+            new_lines = lines[:table_start_line]  # Lines before table
+            new_lines.append(f"{table_name} = {{}}\n")  # Empty table
+            new_lines.extend(lines[table_end_line + 1:])  # Lines after table
+            
+            # Write the modified content back to the file
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.writelines(new_lines)
+            
+            return True
+        else:
+            print(f"Table '{table_name}' not found in the file.")
+            return False
+            
+    except Exception as e:
+        print(f"Error clearing Lua table: {e}")
+        return False
+    
 def update_lua_table_in_file(lua, file_path, var_name, new_data):
     """Update a specific Lua table in a file without affecting other content."""
     try:
@@ -647,11 +667,7 @@ def sync_loop():
     global_last_modified = None
     local_last_modified = None
 
-    # Check if SavedVariables file exists or we create one
-    if not os.path.exists(GLOBAL_ACCOUNT_PATH):
-        print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' does not exist. Creating it...")
-        with open(GLOBAL_ACCOUNT_PATH, 'w', encoding='cp1252') as f:
-            f.write("DeathLoggerDB = { }\nLastLogonDB = { }\nCharacterProfessionsDB = { }\nSyncLoaded = false")
+    validate_saved_variables()
 
     print(f"[LOG] Syncing with online database...")
 
@@ -664,9 +680,9 @@ def sync_loop():
             if isGameRunning and not is_wow_running():
                 print("[LOG] WoW has exited. Shutting down sync.")
                 break
-            
+
             # Lets not check local character stuff on first run as we might have changed character.
-            if not isFirstCheck:
+            if not isFirstCheck and file_exists(LOCAL_CHARACTER_PATH):
 
                 #Get local character savedVariables and see if file modified
                 local_file_stats = os.stat(LOCAL_CHARACTER_PATH)
@@ -680,7 +696,7 @@ def sync_loop():
                     death_logger_data = extract_lua_table(lua, content, "LocalDeathLoggerDB")
                     if death_logger_data:
                         print("[LOG] Trying to update remote with LocalDeathLoggerDB...")
-                        upload_death_log(death_logger_data[0])
+                        upload_death_log(service, lua, death_logger_data[0])
 
                     character_profession_data = extract_lua_table(lua, content, "LocalCharacterProfessionsDB")
                     if character_profession_data:
@@ -694,7 +710,7 @@ def sync_loop():
                         last_modified = character_profession_data[character]["lastModified"]
                         
                         # Call update_character_professions with the extracted values
-                        update_character_professions(character, profession_string, last_modified)
+                        update_character_professions(service, lua, character, profession_string, last_modified)
 
 
                     last_logon_data = extract_lua_table(lua, content, "LocalLastLogonDB")
@@ -708,7 +724,7 @@ def sync_loop():
                         last_logon = last_logon_data[character]
                         
                         # Now you can use this data as needed
-                        update_last_logon(character, last_logon)
+                        update_last_logon(service, lua, character, last_logon)
 
                     # Update last_modified
                     local_file_stats = os.stat(LOCAL_CHARACTER_PATH)
@@ -725,24 +741,8 @@ def sync_loop():
                     print("[LOG] Doing initial setup...") 
                 else:
                     print("[LOG] Global file change detected.")
-
-                content = read_lua_file(GLOBAL_ACCOUNT_PATH)
-                content = content.strip()
-                if content:
-
-                    currentCharacter = extract_lua_var(lua, content, "CurrentCharacter", default= "")
-                    
-                    if currentCharacter:
-                        print("[LOG] CurrentCharacter detected: " + currentCharacter + ". Setting local character path..")
-                        LOCAL_CHARACTER_PATH = "../../../WTF/Account/" + accountName + "/Nordanaar/CHARACTERNAME/SavedVariables/SaellskapsresanMod.lua"
-                        LOCAL_CHARACTER_PATH = LOCAL_CHARACTER_PATH.replace("CHARACTERNAME", currentCharacter)
-                        print("[LOG] LOCAL_CHARACTER_PATH: " + LOCAL_CHARACTER_PATH)
-                    else:
-                        print("[LOG] Current character not set. Should prompt user to reload!")
-                else:
-                     print("[WARNING] Global Account path NOT detected.")
-
-
+                
+                try_and_set_character_path(lua)
                 
                 if isFirstCheck:
                     download_all_tables()
@@ -766,57 +766,143 @@ def sync_loop():
 
 # UTILITY FUNCTIONS
 
-def upload_death_log(log_entry):
-    """Add a death log entry to the DeathLoggerDB sheet."""
-    service = get_sheets_service()
-    lua = initialize_lua()
+def validate_saved_variables():
+    # Required variables that should be present in the file
+    required_vars = [
+        "DeathLoggerDB",
+        "LastLogonDB",
+        "CharacterProfessionsDB",
+        "SyncLoaded",
+        "CurrentCharacter"
+    ]
     
-    index = add_sheet_table_value(service, lua, DEATH_LOGGER_SHEET, "DeathLoggerDB", log_entry)
+    # Default content to write if file is missing or invalid
+    default_content = "DeathLoggerDB = { }\nLastLogonDB = { }\nCharacterProfessionsDB = { }\nSyncLoaded = false\nCurrentCharacter = \"\""
     
-    # if index:
-    #     # Update local file too
-    #     content = read_lua_file(GLOBAL_ACCOUNT_PATH)
-    #     data = extract_lua_table(lua, content, "DeathLoggerDB")
+    # Check if SavedVariables file exists
+    if os.path.exists(GLOBAL_ACCOUNT_PATH):
+        print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' exists. Validating content...")
         
-    #     if isinstance(data, dict):
-    #         data[index] = log_entry
-    #     elif isinstance(data, list):
-    #         while len(data) < index:
-    #             data.append(None)
-    #         data[index-1] = log_entry
-            
-    #     update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "DeathLoggerDB", data)
-    #     print(f"[LOG] Added death log entry at index {index}")
-    #     return True
-    
-    # return False
+        # Read file content
+        with open(GLOBAL_ACCOUNT_PATH, 'r', encoding='cp1252') as f:
+            content = f.read()
+        
+        # Check if all required variables are present
+        all_vars_present = all(var in content for var in required_vars)
+        
+        if not all_vars_present:
+            print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' is missing required variables. Recreating it...")
+            with open(GLOBAL_ACCOUNT_PATH, 'w', encoding='cp1252') as f:
+                f.write(default_content)
+        else:
+            print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' is valid.")
+    else:
+        # File doesn't exist, create it
+        print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' does not exist. Creating it...")
+        with open(GLOBAL_ACCOUNT_PATH, 'w', encoding='cp1252') as f:
+            f.write(default_content)
 
-def update_last_logon(character, timestamp):
-    """Update a character's last logon timestamp."""
-    service = get_sheets_service()
-    lua = initialize_lua()
-    
-    # Get current data
+def try_and_set_character_path(lua):
     content = read_lua_file(GLOBAL_ACCOUNT_PATH)
-    data = extract_lua_table(lua, content, "LastLogonDB")
+    content = content.strip()
+    if content:
+        currentCharacter = extract_lua_var(lua, content, "CurrentCharacter", default= "")
+        if currentCharacter:
+            print("[LOG] CurrentCharacter detected: " + currentCharacter + ". Setting local character path..")
+            LOCAL_CHARACTER_PATH = "../../../WTF/Account/" + currentAccountName + "/Nordanaar/CHARACTERNAME/SavedVariables/SaellskapsresanMod.lua"
+            LOCAL_CHARACTER_PATH = LOCAL_CHARACTER_PATH.replace("CHARACTERNAME", currentCharacter)
+            print("[LOG] LOCAL_CHARACTER_PATH: " + LOCAL_CHARACTER_PATH)
+            return True
+        else:
+            print("[LOG] Current character not set. Should prompt user to reload!")
+            return False
+    else:
+        print("[WARNING] Global Account path NOT detected.")
+        return False
+
+def file_exists(file_path):
+    """
+    Safely check if a file exists at the specified location.
     
-    # Update the timestamp
-    data[character] = timestamp
+    Args:
+        file_path (str): Path to the file to check
+        
+    Returns:
+        bool: True if the file exists, False otherwise
+    """
+    return os.path.isfile(file_path) and os.access(file_path, os.R_OK)
+
+def upload_death_log(service, lua, deathLog):
+    """Add a death log entry to the DeathLoggerDB sheet."""
     
-    # Update local file
-    # update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "LastLogonDB", data)
+    global currentAccountName
+    timestamp = deathLog["timestamp"]
+    playerName = deathLog["playerName"]
+    playerClass = deathLog["playerClass"]
+    level = deathLog["level"]
+    killer = deathLog["killer"]
+    zone = deathLog["zone"]
+    accountName = currentAccountName.capitalize()
+
+    sheet_data = get_sheet_data(service, DEATH_LOGGER_SHEET)
+
+    # Find the highest index currently in use
+    highest_index = 0
+    if sheet_data and len(sheet_data) > 1:  # If there's data beyond the header
+        try:
+            # Assuming first column contains indices
+            indices = [int(row[0]) for row in sheet_data[1:] if row and row[0] and str(row[0]).isdigit()]
+            if indices:
+                highest_index = max(indices)
+        except Exception as e:
+            print(f"[ERROR] Error finding highest index: {e}")
     
-    # Update sheet
-    sheet_data = lua_to_sheet_format(data, "LastLogonDB")
-    update_sheet(service, LAST_LOGON_SHEET, sheet_data)
+    # Use the next available index
+    next_index = highest_index + 1
+
+    # Create the row data for this character
+    row_data = [next_index, timestamp, playerName, playerClass, level, killer, zone, accountName]
+
+    # Add the new row to the sheet
+    if sheet_data:
+        append_to_sheet(service, DEATH_LOGGER_SHEET, [row_data])
+    else:
+        header = ["Index", "timestamp", "playerName", "playerClass", "level", "killer", "zone", "accountName"]
+        update_sheet(service, DEATH_LOGGER_SHEET, [header, row_data])
+
+    print(f"[LOG] Added new deathlog for player {playerName} on index: {next_index}")
+
+    # Also update global Lua file to keep in sync
+    content = read_lua_file(GLOBAL_ACCOUNT_PATH)
+    data = extract_lua_table(lua, content, "DeathLoggerDB")
     
-    print(f"[LOG] Updated last logon for {character} to {timestamp}")
+    # Convert list to dict with 1-based indexing
+    if isinstance(data, list):
+        dictData = {}
+        for i, item in enumerate(data):
+            dictData[i+1] = item  # i+1 gives 1-based indexing
+        data = dictData
+
+    if next_index not in data:
+        data[next_index] = {}
+    
+    data[next_index]["timestamp"] = timestamp
+    data[next_index]["playerName"] = playerName
+    data[next_index]["playerClass"] = playerClass
+    data[next_index]["level"] = level
+    data[next_index]["killer"] = killer
+    data[next_index]["zone"] = zone
+    data[next_index]["accountName"] = accountName
+
+    update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "DeathLoggerDB", data)
+
+    #We can now remove the local entry, so we dont upload it again
+    clear_lua_table_in_file(LOCAL_CHARACTER_PATH, "LocalDeathLoggerDB")
+    
     return True
 
-def update_character_professions(character, profession_string, last_modified=None):
+def update_character_professions(service, lua, character, profession_string, last_modified=None):
     """Update a single character's profession with timestamp-based conflict resolution."""
-    service = get_sheets_service()
-    lua = initialize_lua()
     
     if last_modified is None:
         last_modified = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -875,6 +961,26 @@ def update_character_professions(character, profession_string, last_modified=Non
     
     update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "CharacterProfessionsDB", data)
     
+    return True
+
+def update_last_logon(service, lua, character, timestamp):
+    """Update a character's last logon timestamp."""
+    
+    # Get current data
+    content = read_lua_file(GLOBAL_ACCOUNT_PATH)
+    data = extract_lua_table(lua, content, "LastLogonDB")
+    
+    # Update the timestamp
+    data[character] = timestamp
+    
+    # Update local file
+    # update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "LastLogonDB", data)
+    
+    # Update sheet
+    sheet_data = lua_to_sheet_format(data, "LastLogonDB")
+    update_sheet(service, LAST_LOGON_SHEET, sheet_data)
+    
+    print(f"[LOG] Updated last logon for {character} to {timestamp}")
     return True
 
 def update_sheet_range(service, range_name, values):
