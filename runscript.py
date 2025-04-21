@@ -330,7 +330,7 @@ def add_sheet_table_value(service, lua, sheet_name, table_name, value):
         else:
             # If sheet is empty, create with header
             if table_name == "DeathLoggerDB":
-                header = ["ID", "Log Entry"]
+                header = ["Index", "timestamp", "playerName", "playerClass", "level", "killer", "zone"]
             else:
                 header = ["Index", "Value"]
             update_sheet(service, sheet_name, [header, new_row])
@@ -347,7 +347,7 @@ def lua_to_sheet_format(data, table_name):
     """Convert Lua table data (in Python form) to Google Sheets format."""
     if table_name == "DeathLoggerDB":
         # For indexed log entries
-        sheet_data = [["ID", "Log Entry"]]
+        sheet_data = [["Index", "timestamp", "playerName", "playerClass", "level", "killer", "zone"]]
         if isinstance(data, dict):
             for idx, log_entry in sorted(data.items()):
                 sheet_data.append([idx, log_entry])
@@ -814,33 +814,100 @@ def update_last_logon(character, timestamp):
     return True
 
 def update_character_professions(character, profession_string, last_modified=None):
-    """Update a character's profession information."""
+    """Update a single character's profession with timestamp-based conflict resolution."""
     service = get_sheets_service()
     lua = initialize_lua()
     
     if last_modified is None:
         last_modified = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # Get current data
+    # First, get the current sheet data to find info about this character
+    sheet_data = get_sheet_data(service, CHARACTER_PROFESSIONS_SHEET)
+    
+    # Find the row index and current data for this character
+    character_row = None
+    remote_last_modified = None
+    
+    for i, row in enumerate(sheet_data):
+        if row and len(row) > 0 and row[0] == character:
+            character_row = i
+            if len(row) >= 3:  # Make sure we have a timestamp column
+                remote_last_modified = row[2]
+            break
+    
+    # Check for timestamp conflicts
+    if remote_last_modified:
+        try:
+            remote_timestamp = datetime.strptime(remote_last_modified, "%Y-%m-%d %H:%M:%S")
+            local_timestamp = datetime.strptime(last_modified, "%Y-%m-%d %H:%M:%S")
+            
+            # If remote is newer, don't overwrite it
+            if remote_timestamp > local_timestamp:
+                print(f"[WARNING] Remote data for {character} is newer. Not updating.")
+                return False
+        except ValueError:
+            # If timestamp parsing fails, proceed with update
+            print(f"[WARNING] Could not parse timestamp for {character}, proceeding with update.")
+    
+    # Create the row data for this character
+    row_data = [[character, profession_string, last_modified]]
+    
+    # Update or append to the sheet
+    if character_row is not None:
+        # Update existing row
+        update_range = f"{CHARACTER_PROFESSIONS_SHEET}!A{character_row+1}:C{character_row+1}"
+        result = update_sheet_range(service, update_range, row_data)
+        print(f"[LOG] Updated existing row for {character}")
+    else:
+        # Append new row
+        result = append_to_sheet(service, CHARACTER_PROFESSIONS_SHEET, row_data)
+        print(f"[LOG] Added new row for {character}")
+    
+    # Also update local Lua file to keep in sync
     content = read_lua_file(GLOBAL_ACCOUNT_PATH)
     data = extract_lua_table(lua, content, "CharacterProfessionsDB")
     
-    # Update the profession data
     if character not in data:
         data[character] = {}
     
     data[character]["professionString"] = profession_string
     data[character]["lastModified"] = last_modified
     
-    # Update local file
-    # update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "CharacterProfessionsDB", data)
+    update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "CharacterProfessionsDB", data)
     
-    # Update sheet
-    sheet_data = lua_to_sheet_format(data, "CharacterProfessionsDB")
-    update_sheet(service, CHARACTER_PROFESSIONS_SHEET, sheet_data)
-    
-    print(f"[LOG] Updated professions for {character}")
     return True
+
+def update_sheet_range(service, range_name, values):
+    """Update a specific range in the Google Sheet."""
+    body = {
+        'values': values
+    }
+    result = service.spreadsheets().values().update(
+        spreadsheetId=SPREADSHEET_ID, 
+        range=range_name,
+        valueInputOption='USER_ENTERED', 
+        body=body).execute()
+    return result
+
+def append_to_sheet(service, sheet_name, values):
+    """Append rows to the Google Sheet."""
+    body = {
+        'values': values
+    }
+    result = service.spreadsheets().values().append(
+        spreadsheetId=SPREADSHEET_ID, 
+        range=sheet_name,
+        valueInputOption='USER_ENTERED', 
+        insertDataOption='INSERT_ROWS',
+        body=body).execute()
+    return result
+
+def get_sheet_data(service, sheet_name):
+    """Retrieve all data from the specified sheet."""
+    result = service.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=sheet_name).execute()
+    return result.get('values', [])
 
 def download_all_tables():
     """Download all tables from Google Sheets to the local Lua file."""

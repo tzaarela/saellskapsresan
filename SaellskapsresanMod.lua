@@ -1,5 +1,5 @@
---Sällskapsresan Mod v0.1 - Made by Tzaa 
-local addonVersion = "0.1";
+--Sällskapsresan Mod v0.2 - Made by Tzaa 
+local addonVersion = "0.2";
 
 -- Register frames
 local systemFrame = CreateFrame("Frame", "SaellskapsresanSystemFrame")
@@ -33,10 +33,22 @@ end
 local LastKiller = "Främmande varelse"
 
 -- local ui-variables
-local MainFrame, StartFrame, DeathLogFrame, StatsFrame, ProfessionsFrame, contentFrame, fauxScroll, scrollFrame, logList
+local MainFrame, StartFrame, DeathLogFrame, StatsFrame, ProfessionsFrame, proffContentFrame, proffFauxScroll, proffScrollFrame, logList
 
--- Open the UI
-OpenUI = function()
+-- UI Style
+local mainWindowWidth = 700
+local mainWindowHeight = 500
+
+local mainWindowColor = {r = 0, g = 0, b = 0, a = 0.9} -- Black with little transparency
+local navWindowColor = {r = 0.1, g = 0.1, b = 0.1, a = 1} -- Dark gray with no transparency
+
+local Header1Font = { layer = "OVERLAY", font = "Interface\\AddOns\\SaellskapsresanMod\\fonts\\Myriad-Pro.ttf", size = 24, flags = "OUTLINE" }
+local Header2Font = { layer = "OVERLAY", font = "Interface\\AddOns\\SaellskapsresanMod\\fonts\\Myriad-Pro.ttf", size = 20, flags = "OUTLINE" }
+local Header3Font = { layer = "OVERLAY", font = "Interface\\AddOns\\SaellskapsresanMod\\fonts\\Myriad-Pro.ttf", size = 18, flags = "OUTLINE" }
+local StandardTextFont = { layer = "OVERLAY", font = "Interface\\AddOns\\SaellskapsresanMod\\fonts\\Myriad-Pro.ttf", size = 14, flags = "OUTLINE" }
+
+
+local CreateMainLayout = function()
     if MainFrame and MainFrame:IsShown() then
         return
     end
@@ -44,13 +56,13 @@ OpenUI = function()
     -- Main Frame
     MainFrame = CreateFrame("Frame", "SallskaModMainFrame", UIParent)
     MainFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    MainFrame:SetWidth(600)
-    MainFrame:SetHeight(450)
+    MainFrame:SetWidth(mainWindowWidth)
+    MainFrame:SetHeight(mainWindowHeight)
     MainFrame:SetFrameStrata("DIALOG")
 
     local mainBg = MainFrame:CreateTexture(nil, "BACKGROUND")
     mainBg:SetAllPoints(MainFrame)
-    mainBg:SetTexture(0, 0, 0, 0.9) -- Almost black with high opacity
+    mainBg:SetTexture(mainWindowColor.r, mainWindowColor.g, mainWindowColor.b, mainWindowColor.a) 
 
     MainFrame:SetBackdrop({
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -67,10 +79,155 @@ OpenUI = function()
 
     -- Title
     local title = MainFrame:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Fonts\\FRIZQT__.TTF", 22, "THICKOUTLINE")
+    title:SetFont(Header1Font.font, Header1Font.size, Header1Font.flags)
     title:SetText("Sällskapsresan Mod v" .. addonVersion)
     title:SetPoint("TOP", 0, -24)
+end
 
+local CreateStartLayout = function ()
+
+    -- START Frame
+    StartFrame = CreateFrame("Frame", "StartFrame", MainFrame)
+    StartFrame:SetAllPoints(MainFrame)
+
+    local startFrameBg = StartFrame:CreateTexture(nil, "BACKGROUND")
+    startFrameBg:SetAllPoints(StartFrame)
+    startFrameBg:SetTexture(navWindowColor.r, navWindowColor.g, navWindowColor.b, navWindowColor.a)
+
+    StartFrame:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+
+    StartFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
+    StartFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
+    
+    local infoText = StartFrame:CreateFontString(nil, "OVERLAY")
+    infoText:SetFont(StandardTextFont.font, StandardTextFont.size, StandardTextFont.flags)
+    infoText:SetPoint("TOPLEFT", 20, -20)
+    infoText:SetText("Välkommen till Sällskapsresan!\n\n Detta är ett addon under konstruktion så förvänta er att det kan strula. \n \n Guildregler:\n\n -Addonet måste alltid vara aktivt när man är online  \n -Dör man får man inte ta samma namn igen \n")
+    infoText:SetJustifyH("LEFT")
+    
+    local logo = StartFrame:CreateTexture(nil, "OVERLAY")
+    logo:SetPoint("BOTTOMLEFT", StartFrame, "BOTTOMLEFT", 20, 20)  -- adjust offsets as needed
+    logo:SetTexture("Interface\\AddOns\\SaellskapsresanMod\\UI\\hardcore.blp")
+    logo:SetWidth(128)
+    logo:SetHeight(128) -- adjust size as needed
+end
+
+local CreateDeathLoggerLayout = function ()
+     
+    -- Deathlog Frame
+    DeathLogFrame = CreateFrame("Frame", "DeathLogFrame", MainFrame)
+    DeathLogFrame:SetAllPoints(MainFrame)
+    
+    local deathlogFrameBg = DeathLogFrame:CreateTexture(nil, "BACKGROUND")
+    deathlogFrameBg:SetAllPoints(DeathLogFrame)
+    deathlogFrameBg:SetTexture(navWindowColor.r, navWindowColor.g, navWindowColor.b, navWindowColor.a)
+
+    DeathLogFrame:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+
+    DeathLogFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
+    DeathLogFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
+    DeathLogFrame:Hide()
+
+
+    -- Move existing logList content into LogFrame
+    logList = CreateFrame("Frame", nil, UIParent)
+    logList:SetParent(DeathLogFrame)
+    logList:ClearAllPoints()
+    logList:SetPoint("TOPLEFT", DeathLogFrame, "TOPLEFT", 20, -20)
+    logList:SetWidth(550)
+    logList:SetHeight(340)
+
+    GenerateDeathLog()
+end
+
+local CreateStatsLayout = function()
+    -- Stats Frame
+    StatsFrame = CreateFrame("Frame", "StatsFrame", MainFrame)
+    StatsFrame:SetAllPoints(MainFrame)
+    
+    local statsFrameBg = StatsFrame:CreateTexture(nil, "BACKGROUND")
+    statsFrameBg:SetAllPoints(StatsFrame)
+    statsFrameBg:SetTexture(navWindowColor.r, navWindowColor.g, navWindowColor.b, navWindowColor.a)
+
+    StatsFrame:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+
+    StatsFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
+    StatsFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
+    StatsFrame:Hide()
+
+    local statsText = StatsFrame:CreateFontString(nil, "OVERLAY")
+    statsText:SetFont(StandardTextFont.font, StandardTextFont.size, StandardTextFont.flags)
+    statsText:SetPoint("TOPLEFT", 20, -20)
+    statsText:SetText("Under konstruktion, återkom senare.")
+end
+
+local CreateCharacterProfessionsLayout = function ()
+    -- Professions Frame
+    ProfessionsFrame = CreateFrame("Frame", "ProfessionsFrame", MainFrame)
+    ProfessionsFrame:SetAllPoints(MainFrame)
+    
+    local proffFrameBg = ProfessionsFrame:CreateTexture(nil, "BACKGROUND")
+    proffFrameBg:SetAllPoints(ProfessionsFrame)
+    proffFrameBg:SetTexture(navWindowColor.r, navWindowColor.g, navWindowColor.b, navWindowColor.a)
+    
+    ProfessionsFrame:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+
+    ProfessionsFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
+    ProfessionsFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
+    ProfessionsFrame:Hide()
+
+    -- Create a FauxScrollFrame
+    proffScrollFrame = CreateFrame("Frame", "ProfessionsFauxScrollFrame", ProfessionsFrame)
+    proffScrollFrame:SetPoint("TOPLEFT", ProfessionsFrame, "TOPLEFT", 20, -20)
+    proffScrollFrame:SetPoint("BOTTOMRIGHT", ProfessionsFrame, "BOTTOMRIGHT", -35, 20)
+    proffScrollFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+
+    -- Create the actual scroll frame
+    proffFauxScroll = CreateFrame("ScrollFrame", "ProfessionsFauxScroll", proffScrollFrame, "FauxScrollFrameTemplate")
+    proffFauxScroll:SetPoint("TOPLEFT", proffScrollFrame, "TOPLEFT", 0, 0)
+    proffFauxScroll:SetPoint("BOTTOMRIGHT", proffScrollFrame, "BOTTOMRIGHT", -16, 0)
+
+    -- Create content frame directly inside the scrollFrame (no SetScrollChild needed)
+    proffContentFrame = CreateFrame("Frame", "ProfessionsContentFrame", proffScrollFrame)
+    proffContentFrame:SetPoint("TOPLEFT", proffScrollFrame, "TOPLEFT", 0, 0)
+    proffContentFrame:SetWidth(proffScrollFrame:GetWidth() - 16)  -- Adjust for scroll bar
+    proffContentFrame:SetHeight(500)  -- Will be adjusted based on content
+
+    -- Add visible background to content frame
+    proffContentFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = nil,
+        tile = true, tileSize = 16, edgeSize = 0,
+        insets = { left = 4, right = 4, top = 4, bottom = 4, }
+    })
+    proffContentFrame:SetBackdropColor(0.5, 0, 0, 1)
+
+    PopulateProfessionsTable()
+end
+
+local CreateNavigationButtons = function ()
+    
     -- Navigation Buttons
     local function CreateNavButton(name, text, xOffset, onClick)
         local btn = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
@@ -92,140 +249,7 @@ OpenUI = function()
             button:UnlockHighlight()
         end
     end
-
-    -- START Frame
-    StartFrame = CreateFrame("Frame", "StartFrame", MainFrame)
-    StartFrame:SetAllPoints(MainFrame)
-
-    local startFrameBg = StartFrame:CreateTexture(nil, "BACKGROUND")
-    startFrameBg:SetAllPoints(StartFrame)
-    startFrameBg:SetTexture(0.2, 0.2, 0.2, 0.9) -- Almost black with high opacity
-
-    StartFrame:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-
-    StartFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
-    StartFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
     
-    local infoText = StartFrame:CreateFontString(nil, "OVERLAY")
-    infoText:SetFont("Fonts\\FRIZQT__.TTF", 14)
-    infoText:SetPoint("TOPLEFT", 20, -20)
-    infoText:SetText("Välkommen till Sällskapsresan!\n\n Detta är ett addon under konstruktion så förvänta er att det kan strula. \n \n Guildregler:\n\n -Addonet måste alltid vara aktivt när man är online  \n -Dör man får man inte ta samma namn igen \n")
-    infoText:SetJustifyH("LEFT")
-    
-    local logo = StartFrame:CreateTexture(nil, "OVERLAY")
-    logo:SetPoint("BOTTOMLEFT", StartFrame, "BOTTOMLEFT", 20, 20)  -- adjust offsets as needed
-    logo:SetTexture("Interface\\AddOns\\SaellskapsresanMod\\UI\\hardcore.blp")
-    logo:SetWidth(128)
-    logo:SetHeight(128) -- adjust size as needed
-
-    
-    -- Deathlog Frame
-    DeathLogFrame = CreateFrame("Frame", "DeathLogFrame", MainFrame)
-    DeathLogFrame:SetAllPoints(MainFrame)
-    
-    local deathlogFrameBg = DeathLogFrame:CreateTexture(nil, "BACKGROUND")
-    deathlogFrameBg:SetAllPoints(DeathLogFrame)
-    deathlogFrameBg:SetTexture(0.2, 0.2, 0.2, 0.9) --- Dark gray
-
-    DeathLogFrame:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-
-    DeathLogFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
-    DeathLogFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
-    DeathLogFrame:Hide()
-
-
-    -- Move existing logList content into LogFrame
-    logList = CreateFrame("Frame", nil, UIParent)
-    logList:SetParent(DeathLogFrame)
-    logList:ClearAllPoints()
-    logList:SetPoint("TOPLEFT", DeathLogFrame, "TOPLEFT", 20, -20)
-    logList:SetWidth(550)
-    logList:SetHeight(340)
-
-    -- Stats Frame
-    StatsFrame = CreateFrame("Frame", "StatsFrame", MainFrame)
-    StatsFrame:SetAllPoints(MainFrame)
-    
-    local statsFrameBg = StatsFrame:CreateTexture(nil, "BACKGROUND")
-    statsFrameBg:SetAllPoints(StatsFrame)
-    statsFrameBg:SetTexture(0.2, 0.2, 0.2, 0.9) --- Dark gray
-
-    StatsFrame:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-
-    StatsFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
-    StatsFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
-    StatsFrame:Hide()
-
-    local statsText = StatsFrame:CreateFontString(nil, "OVERLAY")
-    statsText:SetFont("Fonts\\FRIZQT__.TTF", 16, "OUTLINE")
-    statsText:SetPoint("TOPLEFT", 20, -20)
-    statsText:SetText("Under konstruktion, återkom senare.")
-
-    -- Professions Frame
-    ProfessionsFrame = CreateFrame("Frame", "ProfessionsFrame", MainFrame)
-    ProfessionsFrame:SetAllPoints(MainFrame)
-    
-    local proffFrameBg = ProfessionsFrame:CreateTexture(nil, "BACKGROUND")
-    proffFrameBg:SetAllPoints(ProfessionsFrame)
-    proffFrameBg:SetTexture(0.1, 0.1, 0.1, 0.9) --- Dark gray
-    
-    ProfessionsFrame:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-
-    ProfessionsFrame:SetPoint("TOPLEFT", MainFrame, "TOPLEFT", 15, -75)
-    ProfessionsFrame:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -15, 50)
-    ProfessionsFrame:Hide()
-
-    -- Create a FauxScrollFrame
-    scrollFrame = CreateFrame("Frame", "ProfessionsFauxScrollFrame", ProfessionsFrame)
-    scrollFrame:SetPoint("TOPLEFT", ProfessionsFrame, "TOPLEFT", 20, -40)
-    scrollFrame:SetPoint("BOTTOMRIGHT", ProfessionsFrame, "BOTTOMRIGHT", -35, 20)
-    scrollFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-    scrollFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
-
-    -- Create the actual scroll frame
-    fauxScroll = CreateFrame("ScrollFrame", "ProfessionsFauxScroll", scrollFrame, "FauxScrollFrameTemplate")
-    fauxScroll:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 0, 0)
-    fauxScroll:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", -16, 0)
-
-    -- Create content frame directly inside the scrollFrame (no SetScrollChild needed)
-    contentFrame = CreateFrame("Frame", "ProfessionsContentFrame", scrollFrame)
-    contentFrame:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 0, 0)
-    contentFrame:SetWidth(scrollFrame:GetWidth() - 16)  -- Adjust for scroll bar
-    contentFrame:SetHeight(500)  -- Will be adjusted based on content
-
-    -- Add visible background to content frame
-    contentFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = nil,
-        tile = true, tileSize = 16, edgeSize = 0,
-        insets = { left = 4, right = 4, top = 4, bottom = 4, }
-    })
-    contentFrame:SetBackdropColor(0.5, 0, 0, 0.3)  -- Red tint
-
-    PopulateProfessionsTable()
-
-
     -- Navigation Buttons --
     NavButtons = { }
     
@@ -264,41 +288,48 @@ OpenUI = function()
     NavButtons["StatsFrame"] = statsBtn
     NavButtons["ProfessionsFrame"] = professionsBtn
 
-
-    -- Close Button
-    local close = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
-    close:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -20, 20)
-    close:SetWidth(90)
-    close:SetHeight(25)
-    close:SetText("Stäng")
-    close:SetScript("OnClick", function() MainFrame:Hide() end)
-
-    -- Reset Button
-    local refresh = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
-    refresh:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -120, 20)
-    refresh:SetWidth(90)
-    refresh:SetHeight(25)
-    refresh:SetText("Ladda Om")
-    refresh:SetScript("OnClick", ReloadUI)
-
-    -- Reset Button
-    local debugTest = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
-    debugTest:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -220, 20)
-    debugTest:SetWidth(90)
-    debugTest:SetHeight(25)
-    debugTest:SetText("Debug")
-    debugTest:SetScript("OnClick", PopulateProfessionsTable)
-
-    -- Generate Death Log Data
-    GenerateDeathLog()
-
-    -- Show default view
-    
-    
-    
     -- Initialize with Start button pressed
     SetButtonState(startBtn, true)
     ShowFrame(StartFrame)
+end
+
+local CreateSystemButtons = function ()
+     -- Close Button
+     local close = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
+     close:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -20, 20)
+     close:SetWidth(90)
+     close:SetHeight(25)
+     close:SetText("Stäng")
+     close:SetScript("OnClick", function() MainFrame:Hide() end)
+ 
+     -- Reset Button
+     local refresh = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
+     refresh:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -120, 20)
+     refresh:SetWidth(90)
+     refresh:SetHeight(25)
+     refresh:SetText("Ladda Om")
+     refresh:SetScript("OnClick", ReloadUI)
+ 
+     -- Reset Button
+     local debugTest = CreateFrame("Button", nil, MainFrame, "GameMenuButtonTemplate")
+     debugTest:SetPoint("BOTTOMRIGHT", MainFrame, "BOTTOMRIGHT", -220, 20)
+     debugTest:SetWidth(90)
+     debugTest:SetHeight(25)
+     debugTest:SetText("Debug")
+     debugTest:SetScript("OnClick", PopulateProfessionsTable)
+ 
+end
+
+
+-- Open the UI
+OpenUI = function()
+    CreateMainLayout();
+    CreateStartLayout()
+    CreateDeathLoggerLayout()
+    CreateStatsLayout()
+    CreateCharacterProfessionsLayout()
+    CreateNavigationButtons()
+    CreateSystemButtons()
 end
 
 -- Close the UI
@@ -309,7 +340,8 @@ CloseUI = function()
 end
 
 -- Event Handler
-local deathReportSent = false;
+local deathReportSent = false
+local isGameValid = false
 
 systemFrame:SetScript("OnEvent", function()
 
@@ -328,7 +360,13 @@ systemFrame:SetScript("OnEvent", function()
         deathReportSent = false;
         this.loaded = true
         InitializeSystem();
-        RecordPlayerLogin()
+        
+        isGameValid = ValidatePlayerLogin()
+
+    elseif not isGameValid then
+        print("GAME NOT VALID, NEEDS RELOAD")
+        return
+
    
     elseif event == "SKILL_LINES_CHANGED" then
         -- Update when skills change
@@ -352,12 +390,11 @@ systemFrame:SetScript("OnEvent", function()
 
         -- DEFAULT_CHAT_FRAME:AddMessage("damage: " .. damage .. " previousHealth: " .. currentHealth .. "new health: " .. currentHealth - damage, 1, 0.5, 0)
         
-        -- if (currentHealth < 110) then
-        --     print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
-        --     ReportDeath()
-        --     deathReportSent = true
-        --     ReloadUI()
-        -- end
+        if (currentHealth < 91 and not deathReportSent) then
+            print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
+            ReportDeath()
+            deathReportSent = true
+        end
 
         ParseKiller(arg1)
     end
@@ -379,58 +416,59 @@ systemFrame:SetScript("OnEvent", function()
 end)
 
 -- Function to record player login
-RecordPlayerLogin = function()
+ValidatePlayerLogin = function()
     
     -- Update current characters timestamp
     LocalLastLogonDB = {}
     local playerName = UnitName("player")
     local dateTime = date("%y-%m-%d %H:%M:%S")
 
-    print("CurrentPlayer: " .. playerName)
-    print("PreviousPlayer: " .. tostring(CurrentCharacter))
-
     if playerName == tostring(CurrentCharacter) then
         LocalLastLogonDB[playerName] = dateTime
-        print("current player logged in: " .. playerName)
+        return true
     else
+        print ("NEED RELOAD - BECAUSE CHARACTER SWAP")
+        print("CurrentPlayer: " .. playerName)
+        print("PreviousPlayer: " .. tostring(CurrentCharacter))
         LocalCurrentCharacter = playerName
         CurrentCharacter = playerName
-        ShowErrorPopup("Du har bytt karaktär sen du spelade sist, du måste skriva /reload eller trycka 'Ladda om' i Saellskapsresan Addonet.");
+        ShowErrorPopup("Viktigt! Du har bytt karaktär sen du spelade sist, du måste skriva /reload eller trycka 'Ladda om' i Saellskapsresan Addonet.");
+        return false
     end 
 end
 
 function PopulateProfessionsTable()
-    print("Populating Professions Table...")
 
     -- Clear previous entries but NOT the header
-    local children = { contentFrame:GetChildren() }
+    local children = { proffContentFrame:GetChildren() }
     for _, child in ipairs(children) do
         if child:GetName() ~= "ProfessionsHeader" then
-            print("hiding child...")
             child:Hide()
         end
     end
     
     -- Create header if it doesn't exist
-    local headerRow = getglobal("ProfessionsHeader") or CreateFrame("Frame", "ProfessionsHeader", contentFrame)
-    if headerRow:GetParent() ~= contentFrame then
-        headerRow:SetParent(contentFrame)
+    local headerRow = getglobal("ProfessionsHeader") or CreateFrame("Frame", "ProfessionsHeader", proffContentFrame)
+    if headerRow:GetParent() ~= proffContentFrame then
+        headerRow:SetParent(proffContentFrame)
     end
     
     headerRow:SetHeight(25)
-    headerRow:SetWidth(contentFrame:GetWidth())
-    headerRow:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -10)
+    headerRow:SetWidth(proffContentFrame:GetWidth())
+    headerRow:SetPoint("TOPLEFT", proffContentFrame, "TOPLEFT", 10, -10)
     
     -- IMPORTANT: Explicitly show the header
     headerRow:Show()
     
     -- Create header text
     if not headerRow.characterTitle then
-        headerRow.characterTitle = headerRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        headerRow.characterTitle = headerRow:CreateFontString(nil, "OVERLAY")
+        headerRow.characterTitle:SetFont(Header3Font.font, Header3Font.size, Header3Font.flags)
         headerRow.characterTitle:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 5, -5)
         headerRow.characterTitle:SetText("Character")
         
-        headerRow.professionsTitle = headerRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        headerRow.professionsTitle = headerRow:CreateFontString(nil, "OVERLAY")
+        headerRow.professionsTitle:SetFont(Header3Font.font, Header3Font.size, Header3Font.flags)
         headerRow.professionsTitle:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 120, -5)
         headerRow.professionsTitle:SetText("Professions")
     end
@@ -445,7 +483,7 @@ function PopulateProfessionsTable()
     local numRows = 0
     
     -- FauxScrollFrame setup
-    local maxDisplayedRows = math.floor((contentFrame:GetHeight() - 30) / (rowHeight + 2))
+    local maxDisplayedRows = math.floor((proffContentFrame:GetHeight() - 30) / (rowHeight + 2))
     local totalRows = 0
     
     -- Count total entries
@@ -456,8 +494,8 @@ function PopulateProfessionsTable()
     end
     
     -- Update FauxScrollFrame
-    FauxScrollFrame_Update(fauxScroll, totalRows, maxDisplayedRows, rowHeight)
-    local offset = FauxScrollFrame_GetOffset(fauxScroll)
+    FauxScrollFrame_Update(proffFauxScroll, totalRows, maxDisplayedRows, rowHeight)
+    local offset = FauxScrollFrame_GetOffset(proffFauxScroll)
     
     -- print("Total rows: " .. totalRows)
     -- print("Max displayed rows: " .. maxDisplayedRows)
@@ -468,79 +506,86 @@ function PopulateProfessionsTable()
     if CharacterProfessionsDB then
         local index = 0
         for character, profData in pairs(CharacterProfessionsDB) do
-            index = index + 1
-            
-            -- Only show rows that are in view based on scroll position
-            if index > offset and numRows < maxDisplayedRows then
-                numRows = numRows + 1
+
+            if (profData ~= nil) then
                 
-                -- Create or reuse a row
-                local rowName = "ProfRow"..numRows
-                local row = getglobal(rowName)
-                if not row then
-                    -- print("Creating new row: " .. rowName)
-                    row = CreateFrame("Frame", rowName, contentFrame)
-                else
-                    -- print("Reusing existing row: " .. rowName)
-                    -- Make sure it's properly parented
-                    if row:GetParent() ~= contentFrame then
-                        row:SetParent(contentFrame)
+                index = index + 1
+                
+                -- Only show rows that are in view based on scroll position
+                if index > offset and numRows < maxDisplayedRows then
+                    numRows = numRows + 1
+                    
+                    -- Create or reuse a row
+                    local rowName = "ProfRow"..numRows
+                    local row = getglobal(rowName)
+                    if not row then
+                        -- print("Creating new row: " .. rowName)
+                        row = CreateFrame("Frame", rowName, proffContentFrame)
+                    else
+                        -- print("Reusing existing row: " .. rowName)
+                        -- Make sure it's properly parented
+                        if row:GetParent() ~= proffContentFrame then
+                            row:SetParent(proffContentFrame)
+                        end
                     end
+                    
+                    -- IMPORTANT: Explicitly show the row
+                    row:Show()
+                    
+                    -- Update row position
+                    row:SetHeight(rowHeight)
+                    row:SetWidth(proffContentFrame:GetWidth())
+                    row:SetPoint("TOPLEFT", proffContentFrame, "TOPLEFT", 10, yOffset - 10)
+                    
+                    -- Background for alternate rows
+                    if math.mod(numRows, 2) == 0 then
+                        row:SetBackdrop({
+                            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+                            tile = true
+                        })
+                        row:SetBackdropColor(0.1, 0.1, 0.1, 0.2)
+                    else
+                        row:SetBackdrop(nil)
+                    end
+                    
+                    -- Character name
+                    if not row.nameText then
+                        row.nameText = row:CreateFontString(nil, "OVERLAY")
+                        row.nameText:SetFont(StandardTextFont.font, StandardTextFont.size, StandardTextFont.flags)
+                        row.nameText:SetPoint("TOPLEFT", row, "TOPLEFT", 5, 0)
+                    end
+                    row.nameText:SetText(character)
+                    
+                    -- Make sure nameText is shown
+                    row.nameText:Show()
+                    
+                    -- Profession data
+                    if not row.profText then
+                        row.profText = row:CreateFontString(nil, "OVERLAY")
+                        row.profText:SetFont(StandardTextFont.font, StandardTextFont.size, StandardTextFont.flags)
+                        row.profText:SetPoint("TOPLEFT", row, "TOPLEFT", 120, 0)
+                    end
+                    
+                    local profText = "No data"
+                    if type(profData) == "table" and profData.professionString then
+                        profText = profData.professionString
+                    elseif type(profData) == "string" then
+                        profText = profData
+                    end
+                    row.profText:SetText(profText)
+                    
+                    -- Make sure profText is shown
+                    row.profText:Show()
+                    
+                    yOffset = yOffset - (rowHeight + 2)
                 end
-                
-                -- IMPORTANT: Explicitly show the row
-                row:Show()
-                
-                -- Update row position
-                row:SetHeight(rowHeight)
-                row:SetWidth(contentFrame:GetWidth())
-                row:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, yOffset - 10)
-                
-                -- Background for alternate rows
-                if math.mod(numRows, 2) == 0 then
-                    row:SetBackdrop({
-                        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
-                        tile = true
-                    })
-                    row:SetBackdropColor(0.1, 0.1, 0.1, 0.2)
-                else
-                    row:SetBackdrop(nil)
-                end
-                
-                -- Character name
-                if not row.nameText then
-                    row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    row.nameText:SetPoint("TOPLEFT", row, "TOPLEFT", 5, 0)
-                end
-                row.nameText:SetText(character)
-                
-                -- Make sure nameText is shown
-                row.nameText:Show()
-                
-                -- Profession data
-                if not row.profText then
-                    row.profText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    row.profText:SetPoint("TOPLEFT", row, "TOPLEFT", 120, 0)
-                end
-                
-                local profText = "No data"
-                if type(profData) == "table" and profData.professionString then
-                    profText = profData.professionString
-                elseif type(profData) == "string" then
-                    profText = profData
-                end
-                row.profText:SetText(profText)
-                
-                -- Make sure profText is shown
-                row.profText:Show()
-                
-                yOffset = yOffset - (rowHeight + 2)
             end
         end
     else
         -- Add a "no data" row
-        local noDataText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        noDataText:SetPoint("TOP", contentFrame, "TOP", 0, -50)
+        local noDataText = proffContentFrame:CreateFontString(nil, "OVERLAY")
+        noDataText:SetFont(StandardTextFont.font, StandardTextFont.size, StandardTextFont.flags)
+        noDataText:SetPoint("TOP", proffContentFrame, "TOP", 0, -50)
         noDataText:SetText("No profession data available")
     end
 end
@@ -578,6 +623,11 @@ function SetCharacterProfessions()
         end
     end
     
+    if next(primaryProfessions) == nil then
+        print("No professions to upload")
+        return
+    end
+
     -- Add primary professions to the output string
     for _, profData in ipairs(primaryProfessions) do
         outputString = outputString .. profData .. " | "
@@ -744,15 +794,20 @@ ReportDeath = function()
     local killer = LastKiller or "en främmande varelse"
 
     local playerClass = UnitClass("player")
-    local classColor = GetColorFromClassName(playerClass)
-    print("playerClass: " .. playerClass .. " classColor: " .. classColor)
+    -- local classColor = GetColorFromClassName(playerClass)
+    print("Reporting death: " .. playerName)
     
-    local deathMessage = CreateDeathLogRow(timestamp, zone, playerName, classColor, level, killer);
+    local deathMessageTable = {
+        zone = zone,
+        killer = killer,
+        level = level,
+        playerClass = playerClass,
+        playerName = playerName,
+        timestamp = timestamp
+    }
 
-    print("[Sällskapsresan] " .. deathMessage)
-
-    if not TableContains(LocalDeathLoggerDB, deathMessage) then
-        table.insert(LocalDeathLoggerDB, deathMessage)
+    if not TableContains(LocalDeathLoggerDB, deathMessageTable) then
+        table.insert(LocalDeathLoggerDB, deathMessageTable)
     end
     
     -- TODO - Finish print guild message or some kind of dramatic announcment that guild member died 
@@ -781,16 +836,14 @@ function GenerateDeathLog()
 
     local yOffset = -20
     local spacing = 20
-    local fontPath = "Fonts\\FRIZQT__.TTF"
-    local fontSize = 11
-    local fontFlags = nil
+    
 
     -- Rebuild the UI from current DB
     -- print("[Sällskapsresan] Uppdaterar " .. tostring(GetTableLength(DeathLoggerDB)) .. "st dödsfall i dödslistan" );
     
     for i, entry in ipairs(DeathLoggerDB or {}) do
         local fontString = logList:CreateFontString("deathEntry"..i, "OVERLAY")
-        fontString:SetFont(fontPath, fontSize, fontFlags)
+        fontString:SetFont(StandardTextFont.font, StandardTextFont.size, StandardTextFont.flags)
         fontString:SetPoint("TOPLEFT", 0, yOffset - ((i - 1) * spacing) + 20)
         fontString:SetText(entry)
         fontString:Show()
