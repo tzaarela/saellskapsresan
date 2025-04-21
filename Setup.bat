@@ -76,7 +76,7 @@ REM STEP 2: Install Python packages
 echo Installing required Python packages...
 "%PYTHON_EXE%" -m ensurepip --upgrade
 "%PYTHON_EXE%" -m pip install --upgrade pip
-"%PYTHON_EXE%" -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 psutil
+"%PYTHON_EXE%" -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 psutil lupa
 
 :: Get the current directory (SaellskapsresanMod)
 set "CURRENT_DIR=%~dp0"
