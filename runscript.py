@@ -803,6 +803,7 @@ def validate_saved_variables():
             f.write(default_content)
 
 def try_and_set_character_path(lua):
+    global LOCAL_CHARACTER_PATH
     content = read_lua_file(GLOBAL_ACCOUNT_PATH)
     content = content.strip()
     if content:

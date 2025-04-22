@@ -1,5 +1,5 @@
---Sällskapsresan Mod v0.2 - Made by Tzaa 
-local addonVersion = "0.2";
+--Sällskapsresan Mod v0.2.1 - Made by Tzaa 
+local addonVersion = "0.2.1";
 
 -- Register frames
 local systemFrame = CreateFrame("Frame", "SaellskapsresanSystemFrame")
@@ -407,7 +407,13 @@ systemFrame:SetScript("OnEvent", function()
         InitializeSystem();
         
         isGameValid = ValidatePlayerLogin()
-        print ("[Sällskapsresan] Allt är okej!") 
+
+        if isGameValid then
+            print("[Sällskapsresan] Allt är okej!")
+        else
+            print("[Sällskapsresan] VIKTIGT! Antingen är det första gången du loggar in, eller så har du bytt karaktär. Tryck LADDA OM i addonet eller skriv /reload")
+        end
+            
     elseif not isGameValid then
         print("[Sällskapsresan] VIKTIGT! Antingen är det första gången du loggar in, eller så har du bytt karaktär. Tryck LADDA OM i addonet eller skriv /reload")
         return
@@ -424,21 +430,21 @@ systemFrame:SetScript("OnEvent", function()
     -- If we get hit by creature melee/spell hits. I use this for testing somethings.
     elseif event == "CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS" or event == "CHAT_MSG_COMBAT_CREATURE_VS_SELF_SPELL_DAMAGE" then
 
-        local text = arg1
-        local lowerText = string.lower(text)
+        -- local text = arg1
+        -- local lowerText = string.lower(text)
         
         -- Match "hits" in lowercase and grab the number after
-        local damage = GetFirstNumberInString(lowerText);
+        -- local damage = GetFirstNumberInString(lowerText);
 
-        local currentHealth = UnitHealth("player")
+        -- local currentHealth = UnitHealth("player")
 
-        -- DEFAULT_CHAT_FRAME:AddMessage("damage: " .. damage .. " previousHealth: " .. currentHealth .. "new health: " .. currentHealth - damage, 1, 0.5, 0)
+        -- -- DEFAULT_CHAT_FRAME:AddMessage("damage: " .. damage .. " previousHealth: " .. currentHealth .. "new health: " .. currentHealth - damage, 1, 0.5, 0)
         
-        if (currentHealth < 91 and not deathReportSent) then
-            print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
-            ReportDeath()
-            deathReportSent = true
-        end
+        -- if (currentHealth < 91 and not deathReportSent) then
+        --     print("[Sällskapsresan] Jag är ledsen, men du dog! Du kommer bli ihågkommen! Bara att resa sig upp och gå igen!")
+        --     ReportDeath()
+        --     deathReportSent = true
+        -- end
 
         ParseKiller(arg1)
     end
@@ -690,7 +696,6 @@ function SetCharacterProfessions()
     LocalCharacterProfessionsDB[playerName] = characterData
     CharacterProfessionsDB[playerName] = characterData
 end
-
 
 function SendRandomDeathMessage(level, killer)
     local messages = {
