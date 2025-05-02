@@ -636,10 +636,14 @@ def sync_ready_start_wow():
     shouldStartGame = False
     print("[LOG] Sync done.")
     
-    # Get the full path to wow.exe/vanilla.exe
-    exe_path = "../../../VanillaFixes.exe"
+    # Check if SuperwoWLauncher exists, if not, try setting it to vanillafixes
+    exe_path = "../../../SuperWoWlauncher.exe"
 
     # Check if the VanillaFixes exists, if not, set it to WoW.exe
+    if not os.path.exists(exe_path):
+        exe_path = "../../../VanillaFixes.exe"
+    
+    #Running game with WoW.exe
     if not os.path.exists(exe_path):
         exe_path = "../../../WoW.exe"
     
@@ -658,7 +662,28 @@ def sync_ready_start_wow():
     print("[LOG] Launching Turtle WoW... Please dont close this window while playing!")
 
 # MAIN SYNC FUNCTION
+# inner psutil function
+def process_memory():
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    return mem_info.rss
 
+# decorator function
+def profile(func):
+    def wrapper(*args, **kwargs):
+
+        mem_before = process_memory()
+        result = func(*args, **kwargs)
+        mem_after = process_memory()
+        print("{}:consumed memory: {:,}".format(
+            func.__name__,
+            mem_before, mem_after, mem_after - mem_before))
+
+        return result
+    return wrapper
+
+# instantiation of decorator function
+@profile
 def sync_loop():
     """Main sync loop that periodically checks for changes and syncs with Google Sheets."""
     service = get_sheets_service()
