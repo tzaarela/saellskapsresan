@@ -54,6 +54,13 @@ try:
     # Clean up by removing untracked directories (adjust as needed)
     # repo.git.clean('-fd')  # Uncomment if you want to remove untracked directories and files
     
-    print(f"Repository successfully updated at {repo_path}")
+    # Read version number from version.txt
+    version_path = script_dir / "version.txt"
+    if version_path.exists():
+        with open(version_path, "r") as version_file:
+            version = version_file.read().strip()
+        print(f"Repository successfully updated to version {version} at {repo_path}")
+    else:
+        print(f"Repository successfully updated at {repo_path} (version.txt not found)")
 except git.GitCommandError as e:
     print(f"Error updating repository: {e}")
