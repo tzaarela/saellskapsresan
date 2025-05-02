@@ -21,22 +21,39 @@ os.chmod(deploy_key_ssh_path, 0o600)  # Set proper permissions
 
 # Configure SSH to use this key for the specific repository
 config_path = ssh_dir / "config"
-with open(config_path, "a") as f:
-    f.write(f"""
+config_entry = f"""
 Host github.com-deploy
     HostName github.com
     User git
     IdentityFile {deploy_key_ssh_path}
     IdentitiesOnly yes
-""")
+"""
 
-# Clone using the SSH configuration
-repo_url = "git@github.com-deploy:tzaarela/saellskapsresan.git"
-clone_path = script_dir  # Clone into a subdirectory of the script
+# Only append the config if it doesn't already exist
+with open(config_path, "r+") as f:
+    content = f.read()
+    if config_entry.strip() not in content:
+        f.seek(0, 2)  # Move to the end of the file
+        f.write(config_entry)
 
-# Perform the clone using GitPython
+# Path to the existing repository
+repo_path = script_dir
+
 try:
-    git.Repo.clone_from(repo_url, str(clone_path))
-    print(f"Repository successfully cloned to {clone_path}")
+    # Open the existing repository
+    repo = git.Repo(repo_path)
+    
+    # Fetch changes from the remote
+    print(f"Fetching changes from remote...")
+    repo.git.fetch('origin')
+    
+    # Reset to match the remote branch (but keep untracked files)
+    print(f"Updating local files to match remote...")
+    repo.git.reset('--hard', 'origin/master')
+    
+    # Clean up by removing untracked directories (adjust as needed)
+    # repo.git.clean('-fd')  # Uncomment if you want to remove untracked directories and files
+    
+    print(f"Repository successfully updated at {repo_path}")
 except git.GitCommandError as e:
-    print(f"Error cloning repository: {e}")
+    print(f"Error updating repository: {e}")
