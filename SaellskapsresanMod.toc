@@ -9,14 +9,33 @@
 ## SavedVariables: CurrentCharacter, DeathLoggerDB, LastLogonDB, SyncLoaded, CharacterProfessionsDB
 ## OptionalDeps: LibStub, CallbackHandler-1.0, LibDataBroker-1.1, AceCore-3.0, AceHook-3.0, LibDBIcon-1.0
 
-#Core files
-libs\LibStub\LibStub.lua
-libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
-libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
-libs\AceCore-3.0\AceCore-3.0.lua
-libs\AceHook-3.0\AceHook-3.0.lua
-libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
-SaellskapsresanMod.lua
+#Libraries
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\AceCore-3.0\AceCore-3.0.lua
+Libs\AceHook-3.0\AceHook-3.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
-# UI Files
-UI\\hardcore.blp
+#Core files
+core\config.lua
+core\utils.lua
+core\init.lua
+core\events.lua
+
+#UI files
+ui\\hardcore.blp
+ui\frames.lua
+ui\main.lua
+ui\start.lua
+ui\deathlog.lua
+ui\stats.lua
+ui\professions.lua
+ui\navigation.lua
+
+#Module files
+modules\death.lua
+modules\professions.lua
+
+#Main file
+SaellskapsresanMod.lua
