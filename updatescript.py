@@ -59,8 +59,8 @@ try:
     if version_path.exists():
         with open(version_path, "r") as version_file:
             version = version_file.read().strip()
-        print(f"Saellskapsresan successfully updated to version {version} at {repo_path}")
+        print(f"Repository successfully updated to version {version} at {repo_path}")
     else:
-        print(f"Saellskapsresan successfully updated at {repo_path} (version.txt not found)")
+        print(f"Repository successfully updated at {repo_path} (version.txt not found)")
 except git.GitCommandError as e:
-    print(f"Error updating Saellskapsresan: {e}")
+    print(f"Error updating repository: {e}")
