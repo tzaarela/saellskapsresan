@@ -63,9 +63,4 @@ function SSR.SetCharacterProfessions()
     
     LocalCharacterProfessionsDB[playerName] = characterData
     CharacterProfessionsDB[playerName] = characterData
-
-    -- Update the display if needed
-    if SSR.frames.ProfessionsFrame and SSR.frames.ProfessionsFrame:IsVisible() then
-        SSR.ProfessionsScrollUpdate()
-    end
 end

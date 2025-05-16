@@ -30,7 +30,7 @@ function SSR.CreateCharacterProfessionsLayout()
     end)
 
     -- Create a simple container frame
-    local professionContainer = CreateFrame("Frame", "ProfessionsContainer", ProfessionsFrame)
+    local professionContainer = CreateFrame("Frame", "professionsContainer", ProfessionsFrame)
     professionContainer:SetPoint("TOPLEFT", ProfessionsFrame, "TOPLEFT", 20, -20)
     professionContainer:SetPoint("BOTTOMRIGHT", ProfessionsFrame, "BOTTOMRIGHT", -35, 20)
     professionContainer:SetBackdrop({
@@ -51,39 +51,7 @@ function SSR.CreateCharacterProfessionsLayout()
     headerText2:SetPoint("TOPLEFT", professionContainer, "TOPLEFT", 130, -10)
     headerText2:SetText("Professions")
     
-    for i = 1, SSR.ProfessionSettings.maxDisplayed do
-        local row = CreateFrame("Frame", "ProfRow"..i, professionContainer)
-        row:SetHeight(SSR.ProfessionSettings.rowHeight)
-        row:SetWidth(professionContainer:GetWidth() - 30) -- Leave room for scrollbar
-        row:SetPoint("TOPLEFT", professionContainer, "TOPLEFT", 10, -35 - ((i-1) * SSR.ProfessionSettings.rowHeight))
-        
-        -- Make rows visible for debugging
-        row:SetBackdrop({
-            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
-            tile = true
-        })
-        
-        -- Alternate row colors
-        if math.mod(i, 2) == 0 then
-            row:SetBackdropColor(0.1, 0.1, 0.1, 0.3)
-        else
-            row:SetBackdropColor(0.2, 0.2, 0.2, 0.2)
-        end
-        
-        -- Character name text
-        row.nameText = row:CreateFontString(nil, "OVERLAY")
-        row.nameText:SetFont(SSR.UI.StandardTextFont.font, SSR.UI.StandardTextFont.size, SSR.UI.StandardTextFont.flags)
-        row.nameText:SetPoint("LEFT", row, "LEFT", 5, 0)
-        row.nameText:SetText("") -- Will be set in update function
-        
-        -- Profession text
-        row.profText = row:CreateFontString(nil, "OVERLAY")
-        row.profText:SetFont(SSR.UI.StandardTextFont.font, SSR.UI.StandardTextFont.size, SSR.UI.StandardTextFont.flags)
-        row.profText:SetPoint("LEFT", row, "LEFT", 120, 0)
-        row.profText:SetText("") -- Will be set in update function
-        
-        row:Hide() -- Initially hidden
-    end
+    SSR.CreateScrollFrameRows(professionContainer, "ProfessionRow", true)
     
     -- Create the scroll frame LAST, after all content is created
     local scrollFrame = CreateFrame("ScrollFrame", "ProfessionsScrollFrame", professionContainer, "FauxScrollFrameTemplate")
@@ -110,63 +78,23 @@ function SSR.ProfessionsScrollUpdate()
         for character, profData in pairs(CharacterProfessionsDB) do
             if profData ~= nil then
                 table.insert(dataTable, {
-                    name = character,
-                    profData = profData
+                    key = character,
+                    entry = profData
                 })
             end
         end
     end
     
-    -- Sort data (simple bubble sort for Lua 5.0 compatibility)
-    local totalEntries = table.getn(dataTable)
+    local totalEntries = table.getn(dataTable) 
+
+    -- Sort Data By EntryName A-Z
     for i = 1, totalEntries do
         for j = 1, totalEntries - i do
-            if dataTable[j].name > dataTable[j + 1].name then
+            if dataTable[j].key > dataTable[j + 1].key then
                 dataTable[j], dataTable[j + 1] = dataTable[j + 1], dataTable[j]
             end
         end
     end
     
-    -- Constants
-    local maxDisplayed = SSR.ProfessionSettings.maxDisplayed
-    local rowHeight = SSR.ProfessionSettings.rowHeight
-    
-    -- Update the scroll frame
-    FauxScrollFrame_Update(SSR.frames.professionsScrollFrame, totalEntries, maxDisplayed, rowHeight)
-    
-    -- Get current offset
-    local offset = FauxScrollFrame_GetOffset(SSR.frames.professionsScrollFrame)
-    -- print("Current offset: " .. offset .. " Total entries: " .. totalEntries .. " maxDisplayed: " .. maxDisplayed .. " rowHeight: " .. rowHeight)
-    
-    -- Update row visibility and content
-    for i = 1, maxDisplayed do
-        local row = getglobal("ProfRow" .. i)
-        local dataIndex = i + offset
-        
-        if dataIndex <= totalEntries then
-            local entry = dataTable[dataIndex]
-            
-            -- Set text
-            row.nameText:SetText(entry.name)
-
-            local profText = "No data"
-            if type(entry.profData) == "table" and entry.profData.professionString then
-                profText = entry.profData.professionString
-            elseif type(entry.profData) == "string" then
-                profText = entry.profData
-            end
-            row.profText:SetText(profText)
-            -- Show the row
-            row:Show()
-            -- print("Showing row " .. i .. " with data index " .. dataIndex)
-            -- print("Name: " .. entry.name)
-            -- print("professions: " .. profText)
-
-        else
-            -- Hide rows without data
-            -- print("Hiding row " .. i .. " with data index " .. dataIndex)
-
-            row:Hide()
-        end
-    end
+    SSR.UpdateScrollFrameRows(SSR.frames.professionsScrollFrame, dataTable, "ProfessionRow", totalEntries)
 end

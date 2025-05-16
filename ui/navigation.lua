@@ -95,6 +95,6 @@ function SSR.CreateSystemButtons()
     debugTest:SetHeight(25)
     debugTest:SetText("Debug")
     debugTest:SetScript("OnClick", function()
-        SSR.ProfessionsScrollUpdate()
+        SSR.DebugTest()
     end)
 end
