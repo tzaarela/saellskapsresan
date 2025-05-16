@@ -45,7 +45,7 @@ function SSR.CreateNavButton(name, text, xOffset, onClick)
     local btn = CreateFrame("Button", nil, SSR.frames.MainFrame, "GameMenuButtonTemplate")
     btn:SetWidth(120)
     btn:SetHeight(30)
-    btn:SetPoint("TOPLEFT", SSR.frames.MainFrame, "TOPLEFT", xOffset, -60)
+    btn:SetPoint("TOP", SSR.frames.MainFrame, "TOP", xOffset, -60)
     btn:SetText(text)
     btn:SetScript("OnClick", onClick)
     return btn
@@ -54,10 +54,10 @@ end
 -- Create all navigation buttons
 function SSR.CreateNavigationButtons()
     -- Create navigation buttons
-    local startBtn = SSR.CreateNavButton("StartBtn", "Start", 20, function() SSR.ShowFrame(SSR.frames.StartFrame) end)
-    local logBtn = SSR.CreateNavButton("LogBtn", "Dödslogg", 150, function() SSR.ShowFrame(SSR.frames.DeathLogFrame) end)
-    local statsBtn = SSR.CreateNavButton("StatsBtn", "Statistik", 280, function() SSR.ShowFrame(SSR.frames.StatsFrame) end)
-    local professionsBtn = SSR.CreateNavButton("ProfessionsBtn", "Yrken", 410, function() SSR.ShowFrame(SSR.frames.ProfessionsFrame) end)
+    local startBtn = SSR.CreateNavButton("StartBtn", "Start", -210, function() SSR.ShowFrame(SSR.frames.StartFrame) end)
+    local logBtn = SSR.CreateNavButton("LogBtn", "Dödslogg", -70, function() SSR.ShowFrame(SSR.frames.DeathLogFrame) end)
+    local statsBtn = SSR.CreateNavButton("StatsBtn", "Statistik", 70, function() SSR.ShowFrame(SSR.frames.StatsFrame) end)
+    local professionsBtn = SSR.CreateNavButton("ProfessionsBtn", "Yrken", 210, function() SSR.ShowFrame(SSR.frames.ProfessionsFrame) end)
 
     -- Fill the table after buttons are created
     SSR.NavButtons["StartFrame"] = startBtn
