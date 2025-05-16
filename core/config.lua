@@ -21,6 +21,11 @@ SSR.UI.Header2Font = { layer = "OVERLAY", font = "Interface\\AddOns\\Saellskapsr
 SSR.UI.Header3Font = { layer = "OVERLAY", font = "Interface\\AddOns\\SaellskapsresanMod\\fonts\\Myriad-Pro.ttf", size = 18, flags = "OUTLINE" }
 SSR.UI.StandardTextFont = { layer = "OVERLAY", font = "Interface\\AddOns\\SaellskapsresanMod\\fonts\\Myriad-Pro.ttf", size = 14, flags = "OUTLINE" }
 
+SSR.ProfessionSettings = {
+    maxDisplayed = 14,
+    rowHeight = 20
+}
+
 -- Class Colors
 SSR.classColors = {
     ["WARRIOR"] = "C79C6E",

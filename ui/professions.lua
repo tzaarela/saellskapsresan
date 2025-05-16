@@ -51,15 +51,11 @@ function SSR.CreateCharacterProfessionsLayout()
     headerText2:SetPoint("TOPLEFT", professionContainer, "TOPLEFT", 130, -10)
     headerText2:SetText("Professions")
     
-    -- VANILLA SPECIFIC: Create rows first (fixed number that will be shown/hidden)
-    local rowHeight = 20
-    local maxRows = 7 -- Fixed number of visible rows
-    
-    for i = 1, maxRows do
+    for i = 1, SSR.ProfessionSettings.maxDisplayed do
         local row = CreateFrame("Frame", "ProfRow"..i, professionContainer)
-        row:SetHeight(rowHeight)
+        row:SetHeight(SSR.ProfessionSettings.rowHeight)
         row:SetWidth(professionContainer:GetWidth() - 30) -- Leave room for scrollbar
-        row:SetPoint("TOPLEFT", professionContainer, "TOPLEFT", 10, -35 - ((i-1) * rowHeight))
+        row:SetPoint("TOPLEFT", professionContainer, "TOPLEFT", 10, -35 - ((i-1) * SSR.ProfessionSettings.rowHeight))
         
         -- Make rows visible for debugging
         row:SetBackdrop({
@@ -97,7 +93,7 @@ function SSR.CreateCharacterProfessionsLayout()
     -- Set the OnVerticalScroll handler
     scrollFrame:SetScript("OnVerticalScroll", function()
         -- The simplest possible implementation for Vanilla WoW
-        FauxScrollFrame_OnVerticalScroll(rowHeight, SSR.ProfessionsScrollUpdate) 
+        FauxScrollFrame_OnVerticalScroll(SSR.ProfessionSettings.rowHeight, SSR.ProfessionsScrollUpdate) 
     end)
     
     -- Store references for later use
@@ -132,15 +128,15 @@ function SSR.ProfessionsScrollUpdate()
     end
     
     -- Constants
-    local maxDisplayed = 7
-    local rowHeight = 20
+    local maxDisplayed = SSR.ProfessionSettings.maxDisplayed
+    local rowHeight = SSR.ProfessionSettings.rowHeight
     
     -- Update the scroll frame
     FauxScrollFrame_Update(SSR.frames.professionsScrollFrame, totalEntries, maxDisplayed, rowHeight)
     
     -- Get current offset
     local offset = FauxScrollFrame_GetOffset(SSR.frames.professionsScrollFrame)
-    print("Current offset: " .. offset .. " Total entries: " .. totalEntries .. "maxDisplayed: " .. maxDisplayed .. "rowHeight: " .. rowHeight)
+    -- print("Current offset: " .. offset .. " Total entries: " .. totalEntries .. " maxDisplayed: " .. maxDisplayed .. " rowHeight: " .. rowHeight)
     
     -- Update row visibility and content
     for i = 1, maxDisplayed do
@@ -162,13 +158,13 @@ function SSR.ProfessionsScrollUpdate()
             row.profText:SetText(profText)
             -- Show the row
             row:Show()
-            print("Showing row " .. i .. " with data index " .. dataIndex)
-            print("Name: " .. entry.name)
-            print("professions: " .. profText)
+            -- print("Showing row " .. i .. " with data index " .. dataIndex)
+            -- print("Name: " .. entry.name)
+            -- print("professions: " .. profText)
 
         else
             -- Hide rows without data
-            print("Hiding row " .. i .. " with data index " .. dataIndex)
+            -- print("Hiding row " .. i .. " with data index " .. dataIndex)
 
             row:Hide()
         end
