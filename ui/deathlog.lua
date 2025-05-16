@@ -44,7 +44,7 @@ function SSR.CreateDeathLoggerLayout()
     local headerText = deathLogContainer:CreateFontString(nil, "OVERLAY")
     headerText:SetFont(SSR.UI.Header3Font.font, SSR.UI.Header3Font.size, SSR.UI.Header3Font.flags)
     headerText:SetPoint("TOPLEFT", deathLogContainer, "TOPLEFT", 10, -10)
-    headerText:SetText("Players")
+    headerText:SetText("Rip †")
 
     -- Move existing logList content into LogFrame
     SSR.CreateScrollFrameRows(deathLogContainer, "DeathLogRow", false)

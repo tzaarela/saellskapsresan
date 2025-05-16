@@ -39,6 +39,18 @@ function SSR.CreateMainLayout()
     title:SetFont(SSR.UI.Header1Font.font, SSR.UI.Header1Font.size, SSR.UI.Header1Font.flags)
     title:SetText("Sällskapsresan Mod v" .. SSR.addonVersion)
     title:SetPoint("TOP", 0, -24)
+
+    -- Made By
+    local mb = MainFrame:CreateFontString(nil, "OVERLAY")
+    mb:SetFont(SSR.UI.Header1Font.font, SSR.UI.Header1Font.size - 8, SSR.UI.Header1Font.flags)
+    mb:SetText("Made by")
+    mb:SetPoint("TOPRIGHT", -20, -20)
+
+    -- Tzaa
+    local tzaa = MainFrame:CreateFontString(nil, "OVERLAY")
+    tzaa:SetFont(SSR.UI.Header1Font.font, SSR.UI.Header1Font.size - 4, SSR.UI.Header1Font.flags)
+    tzaa:SetText("tzaa")
+    tzaa:SetPoint("TOPRIGHT", -28, -40)
     
     -- Store the frame reference
     SSR.frames.MainFrame = MainFrame

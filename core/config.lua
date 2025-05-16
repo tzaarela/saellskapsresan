@@ -6,7 +6,7 @@ Saellskapsresan = Saellskapsresan or {}
 local SSR = Saellskapsresan
 
 -- Version
-SSR.addonVersion = "0.2.1"
+SSR.addonVersion = "0.2.2"
 
 -- UI Style
 SSR.UI = {}
