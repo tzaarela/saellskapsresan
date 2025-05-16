@@ -140,7 +140,7 @@ function SSR.ProfessionsScrollUpdate()
     
     -- Get current offset
     local offset = FauxScrollFrame_GetOffset(SSR.frames.professionsScrollFrame)
-    print("Current offset: " .. offset .. " Total entries: " .. totalEntries)
+    print("Current offset: " .. offset .. " Total entries: " .. totalEntries .. "maxDisplayed: " .. maxDisplayed .. "rowHeight: " .. rowHeight)
     
     -- Update row visibility and content
     for i = 1, maxDisplayed do
@@ -152,7 +152,7 @@ function SSR.ProfessionsScrollUpdate()
             
             -- Set text
             row.nameText:SetText(entry.name)
-            
+
             local profText = "No data"
             if type(entry.profData) == "table" and entry.profData.professionString then
                 profText = entry.profData.professionString
@@ -160,12 +160,16 @@ function SSR.ProfessionsScrollUpdate()
                 profText = entry.profData
             end
             row.profText:SetText(profText)
-            
             -- Show the row
             row:Show()
             print("Showing row " .. i .. " with data index " .. dataIndex)
+            print("Name: " .. entry.name)
+            print("professions: " .. profText)
+
         else
             -- Hide rows without data
+            print("Hiding row " .. i .. " with data index " .. dataIndex)
+
             row:Hide()
         end
     end

@@ -27,7 +27,7 @@ function SSR.SetupDataBroker()
     SSR.dataObject = LDB:NewDataObject("Saellskapsresan", {
         type = "data source",
         text = "Saellskapsresan",
-        icon = "Interface\\AddOns\\SaellskapsresanMod\\UI\\addonlogo.tga",
+        icon = "Interface\\AddOns\\SaellskapsresanMod\\art\\addonlogo.tga",
         OnClick = function(self, button)
             SSR.OpenUI()
         end,

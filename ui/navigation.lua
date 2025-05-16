@@ -78,7 +78,7 @@ function SSR.CreateSystemButtons()
     close:SetWidth(90)
     close:SetHeight(25)
     close:SetText("Stäng")
-    close:SetScript("OnClick", function() SSR.frames.MainFrame:Hide() end)
+    close:SetScript("OnClick", function() SSR.CloseUI() end)
 
     -- Reset Button
     local refresh = CreateFrame("Button", nil, SSR.frames.MainFrame, "GameMenuButtonTemplate")

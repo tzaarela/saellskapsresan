@@ -31,7 +31,7 @@ function SSR.CreateStartLayout()
     
     local logo = StartFrame:CreateTexture(nil, "OVERLAY")
     logo:SetPoint("BOTTOMLEFT", StartFrame, "BOTTOMLEFT", 20, 20)  -- adjust offsets as needed
-    logo:SetTexture("Interface\\AddOns\\SaellskapsresanMod\\UI\\hardcore.blp")
+    logo:SetTexture("Interface\\AddOns\\SaellskapsresanMod\\Art\\hardcore.blp")
     logo:SetWidth(128)
     logo:SetHeight(128) -- adjust size as needed
     
