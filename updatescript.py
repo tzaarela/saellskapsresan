@@ -21,6 +21,13 @@ os.chmod(deploy_key_ssh_path, 0o600)  # Set proper permissions
 
 # Configure SSH to use this key for the specific repository
 config_path = ssh_dir / "config"
+
+# Check if config file exists, if not create an empty one with proper permissions
+if not config_path.exists():
+    with open(config_path, "w") as f:
+        pass  # Create empty file
+    os.chmod(config_path, 0o600)  # Set proper permissions for the file
+
 config_entry = f"""
 Host github.com-deploy
     HostName github.com
@@ -29,11 +36,16 @@ Host github.com-deploy
     IdentitiesOnly yes
 """
 
+# Try to read the existing content or start with empty string if file doesn't exist properly
+try:
+    with open(config_path, "r") as f:
+        content = f.read()
+except:
+    content = ""
+
 # Only append the config if it doesn't already exist
-with open(config_path, "r+") as f:
-    content = f.read()
-    if config_entry.strip() not in content:
-        f.seek(0, 2)  # Move to the end of the file
+if config_entry.strip() not in content:
+    with open(config_path, "a") as f:  # Use append mode instead of r+
         f.write(config_entry)
 
 # Path to the existing repository

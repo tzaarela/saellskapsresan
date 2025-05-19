@@ -106,8 +106,7 @@ def cleanup_before_exit():
     except Exception as e:
         print(f"[ERROR] Error during cleanup: {e}")
 
-# Register the cleanup function
-atexit.register(cleanup_before_exit)
+
 
 #### CORE FUNCTIONS ####
 
@@ -692,7 +691,13 @@ def sync_loop():
     global_last_modified = None
     local_last_modified = None
 
-    validate_saved_variables()
+    if not (validate_saved_variables()):
+        print("[ERROR] Failed to validate saved variables")
+        input("Press Enter to continue...")
+        return
+    
+    # Register the cleanup function
+    atexit.register(cleanup_before_exit)
 
     print(f"[LOG] Syncing with online database...")
 
@@ -791,7 +796,7 @@ def sync_loop():
 
 # UTILITY FUNCTIONS
 
-def validate_saved_variables():
+def  validate_saved_variables():
     # Required variables that should be present in the file
     required_vars = [
         "DeathLoggerDB",
@@ -801,6 +806,11 @@ def validate_saved_variables():
         "CurrentCharacter"
     ]
     
+    if ("REPLACEWITHACCOUNTNAME" in GLOBAL_ACCOUNT_PATH):
+        print("[ERROR] You have not changed to your accountname in the accountName.txt file in the Saellskapsresan addon folder. Please do this and run again!")
+        return False
+
+
     # Default content to write if file is missing or invalid
     default_content = "DeathLoggerDB = { }\nLastLogonDB = { }\nCharacterProfessionsDB = { }\nSyncLoaded = false\nCurrentCharacter = \"\""
     
@@ -826,6 +836,8 @@ def validate_saved_variables():
         print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' does not exist. Creating it...")
         with open(GLOBAL_ACCOUNT_PATH, 'w', encoding='cp1252') as f:
             f.write(default_content)
+
+    return True
 
 def try_and_set_character_path(lua):
     global LOCAL_CHARACTER_PATH
