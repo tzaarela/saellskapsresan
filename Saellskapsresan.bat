@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 
 REM CONFIG
 set PYTHON_EXEC=python
-set SYNC_SCRIPT=runscript.py
+set SYNC_SCRIPT=runtime/main.py
 set FLAG_FILE=sync_ready.flag
 
 REM Start sync script
