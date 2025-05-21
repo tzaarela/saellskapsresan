@@ -18,9 +18,10 @@ SPREADSHEET_ID = '1IarFvH3gl3y1MGlId3SwrvqLVfYiIR8KwX3dOE8R5II'
 DEATH_LOGGER_SHEET = 'DeathLoggerDB'
 LAST_LOGON_SHEET = 'LastLogonDB'
 CHARACTER_PROFESSIONS_SHEET = 'CharacterProfessionsDB'
+CHARACTER_STATS_SHEET = 'CharacterStatsDB'
 
 # Default content for saved variables file
-DEFAULT_SAVEDVARS_CONTENT = "DeathLoggerDB = { }\nLastLogonDB = { }\nCharacterProfessionsDB = { }\nSyncLoaded = false\nCurrentCharacter = \"\""
+DEFAULT_SAVEDVARS_CONTENT = "DeathLoggerDB = { }\nLastLogonDB = { }\nCharacterProfessionsDB = { }\nCharacterStatsDB = { }\nSyncLoaded = false\nCurrentCharacter = \"\""
 
 # Required variables that should be present in the file
 REQUIRED_SAVEDVARS = [
@@ -28,6 +29,7 @@ REQUIRED_SAVEDVARS = [
     "LastLogonDB",
     "CharacterProfessionsDB",
     "SyncLoaded",
+    "CharacterStatsDB",
     "CurrentCharacter"
 ]
 

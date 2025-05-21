@@ -11,11 +11,13 @@ function SSR.InitializeSystem()
     LastLogonDB = LastLogonDB or {}
     SyncLoaded = SyncLoaded or false
     CharacterProfessionsDB = CharacterProfessionsDB or {}
+    CharacterStatsDB = CharacterStatsDB or {}
     LocalCurrentCharacter = LocalCurrentCharacter or ""
     LocalDeathLoggerDB = LocalDeathLoggerDB or {}
     LocalLastLogonDB = LocalLastLogonDB or {}
     LocalSyncLoaded = LocalSyncLoaded or false
     LocalCharacterProfessionsDB = LocalCharacterProfessionsDB or {}
+    LocalCharacterStatsDB = LocalCharacterStatsDB or {}
     print("[Sällskapsresan] v" .. SSR.addonVersion .." har initierats!")
 end
 

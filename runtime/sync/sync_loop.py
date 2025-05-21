@@ -44,8 +44,9 @@ def download_all_tables():
     for table_name, sheet_name in [
         ("DeathLoggerDB", config.DEATH_LOGGER_SHEET),
         ("LastLogonDB", config.LAST_LOGON_SHEET),
-        ("CharacterProfessionsDB", config.CHARACTER_PROFESSIONS_SHEET)
-    ]:
+        ("CharacterProfessionsDB", config.CHARACTER_PROFESSIONS_SHEET),
+        ("CharacterStatsDB", config.CHARACTER_STATS_SHEET)]:
+        
         sheet_data = get_sheet_data(service, sheet_name)
         lua_data = sheet_to_lua_format(sheet_data, table_name)
         update_lua_table_in_file(lua, config.GLOBAL_ACCOUNT_PATH, table_name, lua_data)
