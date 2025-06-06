@@ -3,12 +3,24 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from config import SCOPES, SERVICE_ACCOUNT_FILE, SPREADSHEET_ID
+import google_auth_httplib2
+import httplib2
 
 def get_sheets_service():
     """Create and return a Google Sheets service object."""
+    
+    # Create credentials
     credentials = service_account.Credentials.from_service_account_file(
         SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-    return build('sheets', 'v4', credentials=credentials)
+    
+    # Create an HTTP object with timeout
+    http = httplib2.Http(timeout=5)  # timeout in seconds
+
+    # Create an authorized HTTP object
+    authorized_http = google_auth_httplib2.AuthorizedHttp(credentials, http=http)
+
+
+    return build('sheets', 'v4', http=authorized_http)
 
 def create_and_share_spreadsheet(admin_email):
     """

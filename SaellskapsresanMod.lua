@@ -1,4 +1,4 @@
---Sällskapsresan Mod v0.2.1 - Made by Tzaa 
+--Sällskapsresan Mod v0.2.3 - Made by Tzaa 
 -- Main file - Acts as entry point
 
 -- Initialize our addon namespace if not already done

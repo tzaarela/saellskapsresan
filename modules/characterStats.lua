@@ -1,7 +1,7 @@
 Saellskapsresan = Saellskapsresan or {}
 local SSR = Saellskapsresan
 
-function SSR.GetRemoteCharacterStats()
+function SSR.CacheRemoteCharacterStats()
     if CachedCharacterStatsDB == nil then
         CachedCharacterStatsDB = {}
     end
@@ -52,10 +52,13 @@ function SSR.TryUpdateStat(statKey, statValue)
     local cachedStats = CachedCharacterStatsDB[characterName]
 
     if statKey == "HighestCrit" and statValue > cachedStats.HighestCrit then
+        print("[Sällskapsresan] New critical hit record:  " .. statValue ..  " damage!")
         cachedStats.HighestCrit = statValue
     end
 
     CachedCharacterStatsDB[characterName] = cachedStats
+
+    SSR.UpdateRemoteCharacterStats()
 end
 
 function SSR.TryIncrementStat(statKey, incrementValue)
@@ -67,4 +70,6 @@ function SSR.TryIncrementStat(statKey, incrementValue)
     end
 
     CachedCharacterStatsDB[characterName] = cachedStats
+
+    SSR.UpdateRemoteCharacterStats()
 end

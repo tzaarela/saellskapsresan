@@ -6,6 +6,9 @@ local SSR = Saellskapsresan
 
 -- Create the stats layout
 function SSR.CreateStatsLayout()
+
+
+   
     -- Stats Frame
     local StatsFrame = CreateFrame("Frame", "StatsFrame", SSR.frames.MainFrame)
     StatsFrame:SetAllPoints(SSR.frames.MainFrame)
@@ -50,7 +53,7 @@ function SSR.CreateStatsLayout()
     -- Create the four leaderboards
     for i = 1, 4 do
         
-        print("Creating leaderboard column. Width: " .. columnWidth .. " Height: " .. columnHeight)
+        -- print("Creating leaderboard column. Width: " .. columnWidth .. " Height: " .. columnHeight)
         -- Create frame for this leaderboard column
         local leaderboard = CreateFrame("Frame", "Leaderboard"..i, statsContainer)
         leaderboard:SetPoint("TOPLEFT", statsContainer, "TOPLEFT", (i-1)*(columnWidth + columnSpacing) + 10, -20)
@@ -61,7 +64,7 @@ function SSR.CreateStatsLayout()
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
+        })
 
             -- DEBUG AREA
         leaderboard:SetBackdropColor(0.1, 0.1, 0.3, 0.8)
@@ -70,7 +73,6 @@ function SSR.CreateStatsLayout()
         -- print("Creating leaderboard column.")
 
         -- Create title for this leaderboard
-
         local title = statsContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         title:SetPoint("TOP", leaderboard, "TOP", 0, -10)
         title:SetText(leaderboardTitles[i])
@@ -100,37 +102,121 @@ function SSR.CreateStatsLayout()
     
     -- Store frame reference
     SSR.frames.StatsFrame = StatsFrame
+    SSR.UpdateLeaderboards()
+
 end
 
 -- Function to update leaderboard data
-function SSR.UpdateLeaderboards(leaderboardData)
-    -- leaderboardData should be a table with 4 subtables, one for each leaderboard
-    -- Each subtable should contain up to 10 entries with name and score
+function SSR.UpdateLeaderboards()
+    -- print("Updating leaderboards...")
+
+    if not CharacterStatsDB then 
+        print("No character stats found")
+        return 
+    end
+
+    if not SSR.frames.leaderboardEntries then 
+        print("No leaderboard entries found")    
+        return 
+    end
     
-    if not SSR.frames.leaderboardEntries then return end
+    -- Create arrays for each leaderboard category
+    local biggestCrit = {}
+    local critterKiller = {}
+    local highestLevel = {}
+    local mostDeaths = {}
     
-    for i = 1, 4 do
-        if leaderboardData and leaderboardData[i] then
-            for j = 1, 10 do
-                if leaderboardData[i][j] and SSR.frames.leaderboardEntries[i][j] then
-                    local name = leaderboardData[i][j].name or "---"
-                    local score = leaderboardData[i][j].score or 0
-                    SSR.frames.leaderboardEntries[i][j]:SetText("#"..j.." "..name.." ("..score..")")
-                elseif SSR.frames.leaderboardEntries[i][j] then
-                    -- No data for this entry, show placeholder
-                    SSR.frames.leaderboardEntries[i][j]:SetText("#"..j.." ---")
+    -- Process all characters and populate arrays
+    for charName, charData in pairs(CharacterStatsDB) do
+        -- Only include alive characters (you can remove this check if needed)
+        if charData.IsAlive == "TRUE" or charData.IsAlive then
+            -- Biggest Crit leaderboard
+            table.insert(biggestCrit, {
+                name = charName,
+                score = tonumber(charData.HighestCrit) or 0
+            })
+            
+            -- Critter Killer leaderboard
+            table.insert(critterKiller, {
+                name = charName,
+                score = tonumber(charData.CrittersKilled) or 0
+            })
+            
+            -- Highest Level leaderboard
+            table.insert(highestLevel, {
+                name = charName,
+                score = tonumber(charData.Level) or 0
+            })
+            
+            -- Most Deaths leaderboard - we'll calculate this separately from DeathLoggerDB
+            -- We'll add characters here but calculate deaths after processing all characters
+        end
+    end
+    
+    -- Calculate deaths for each account from DeathLoggerDB
+    local accountDeaths = {}
+    if DeathLoggerDB then
+        for i = 1, table.getn(DeathLoggerDB) do
+            local deathEntry = DeathLoggerDB[i]
+            if deathEntry and deathEntry.accountName then
+                local accountName = deathEntry.accountName
+                if not accountDeaths[accountName] then
+                    accountDeaths[accountName] = 0
                 end
+                accountDeaths[accountName] = accountDeaths[accountName] + 1
             end
         end
     end
-end
+    
+    -- Convert accountDeaths table to array for sorting
+    local deathsArray = {}
+    for accountName, deathCount in pairs(accountDeaths) do
+        table.insert(deathsArray, {
+            name = accountName,
+            score = deathCount
+        })
+    end
+    
+    -- Sort by death count (highest first)
+    table.sort(deathsArray, function(a, b) return a.score > b.score end)
+    
+    -- -- Print top 3
+    -- print("Top 3 accounts with most deaths:")
+    -- for i = 1, 3 do
+    --     if deathsArray[i] then
+    --         print("#" .. i .. ": " .. deathsArray[i].name .. " (" .. deathsArray[i].score .. " deaths)")
+    --     end
+    -- end
 
--- Example of how to call the update function:
--- SSR.UpdateLeaderboards({
---     { -- First leaderboard data (Total Quests)
---         {name = "Player1", score = 250},
---         {name = "Player2", score = 220},
---         -- ... more entries
---     },
---     -- ... data for other leaderboards
--- })
+
+    -- Sort each leaderboard (highest to lowest)
+    table.sort(biggestCrit, function(a, b) return a.score > b.score end)
+    table.sort(critterKiller, function(a, b) return a.score > b.score end)
+    table.sort(highestLevel, function(a, b) return a.score > b.score end)
+    table.sort(mostDeaths, function(a, b) return a.score > b.score end)
+    
+    -- Store sorted arrays for easy access
+    local leaderboards = {biggestCrit, critterKiller, highestLevel, deathsArray}
+    
+    -- Update the UI
+    for i = 1, 4 do
+        for j = 1, 10 do
+            if leaderboards[i][j] and SSR.frames.leaderboardEntries[i][j] then
+                local name = leaderboards[i][j].name or "---"
+                local score = leaderboards[i][j].score or 0
+
+                if score == 0 then
+                    SSR.frames.leaderboardEntries[i][j]:SetText("#"..j.." ---")
+                else 
+                    SSR.frames.leaderboardEntries[i][j]:SetText("#"..j.." "..name.." ("..score..")")
+                end
+                
+            elseif SSR.frames.leaderboardEntries[i][j] then
+                -- No data for this entry, show placeholder
+                SSR.frames.leaderboardEntries[i][j]:SetText("#"..j.." ---")
+            end
+        end
+    end
+    
+    -- print("Leaderboards updated successfully!")
+end

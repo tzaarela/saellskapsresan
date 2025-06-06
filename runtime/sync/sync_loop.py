@@ -16,6 +16,7 @@ from google_sheets.converters import sheet_to_lua_format
 from sync.death_logger import upload_death_log
 from sync.last_logon import update_last_logon
 from sync.professions import update_character_professions
+from sync.character_stats import update_character_stats
 
 def try_and_set_character_path(lua):
     """Attempt to set the character-specific SavedVariables path based on the CurrentCharacter variable."""
@@ -41,6 +42,7 @@ def download_all_tables():
     service = get_sheets_service()
     lua = initialize_lua()
     
+    print(f"[LOG] Trying to download all tables from Google Sheets...")
     for table_name, sheet_name in [
         ("DeathLoggerDB", config.DEATH_LOGGER_SHEET),
         ("LastLogonDB", config.LAST_LOGON_SHEET),
@@ -49,6 +51,7 @@ def download_all_tables():
         
         sheet_data = get_sheet_data(service, sheet_name)
         lua_data = sheet_to_lua_format(sheet_data, table_name)
+        # print("Update lua table in file")
         update_lua_table_in_file(lua, config.GLOBAL_ACCOUNT_PATH, table_name, lua_data)
     
     print(f"[LOG] Downloaded all tables from Google Sheets")
@@ -138,6 +141,16 @@ def sync_loop():
                         
                         # Now you can use this data as needed
                         update_last_logon(service, lua, character, last_logon)
+
+                    local_character_stats_data = extract_lua_table(lua, content, "LocalCharacterStatsDB")
+                    if local_character_stats_data:
+
+                        print("[LOG] Trying to update remote with LocalCharacterStatsDB...")
+                        # Get the first character name (first key in the dictionary)
+                        character = next(iter(local_character_stats_data))
+                        
+                        # Now you can use this data as needed
+                        update_character_stats(service, character, local_character_stats_data) 
 
                     # Update last_modified
                     local_file_stats = os.stat(config.LOCAL_CHARACTER_PATH)

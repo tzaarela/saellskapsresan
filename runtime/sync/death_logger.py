@@ -1,4 +1,4 @@
-from config import DEATH_LOGGER_SHEET, GLOBAL_ACCOUNT_PATH, LOCAL_CHARACTER_PATH, currentAccountName
+import config
 from google_sheets.operations import get_sheet_data, append_to_sheet, update_sheet
 from utils.lua_operations import extract_lua_table, update_lua_table_in_file
 from utils.file_operations import read_lua_file, clear_lua_table_in_file
@@ -12,9 +12,9 @@ def upload_death_log(service, lua, deathLog):
     level = deathLog["level"]
     killer = deathLog["killer"]
     zone = deathLog["zone"]
-    accountName = currentAccountName.capitalize()
+    accountName = config.currentAccountName.capitalize()
 
-    sheet_data = get_sheet_data(service, DEATH_LOGGER_SHEET)
+    sheet_data = get_sheet_data(service, config.DEATH_LOGGER_SHEET)
 
     # Find the highest index currently in use
     highest_index = 0
@@ -35,15 +35,15 @@ def upload_death_log(service, lua, deathLog):
 
     # Add the new row to the sheet
     if sheet_data:
-        append_to_sheet(service, DEATH_LOGGER_SHEET, [row_data])
+        append_to_sheet(service, config.DEATH_LOGGER_SHEET, [row_data])
     else:
         header = ["Index", "timestamp", "playerName", "playerClass", "level", "killer", "zone", "accountName"]
-        update_sheet(service, DEATH_LOGGER_SHEET, [header, row_data])
+        update_sheet(service, config.DEATH_LOGGER_SHEET, [header, row_data])
 
     print(f"[LOG] Added new deathlog for player {playerName} on index: {next_index}")
 
     # Also update global Lua file to keep in sync
-    content = read_lua_file(GLOBAL_ACCOUNT_PATH)
+    content = read_lua_file(config.GLOBAL_ACCOUNT_PATH)
     data = extract_lua_table(lua, content, "DeathLoggerDB")
     
     # Convert list to dict with 1-based indexing
@@ -64,9 +64,9 @@ def upload_death_log(service, lua, deathLog):
     data[next_index]["zone"] = zone
     data[next_index]["accountName"] = accountName
 
-    update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "DeathLoggerDB", data)
+    update_lua_table_in_file(lua, config.GLOBAL_ACCOUNT_PATH, "DeathLoggerDB", data)
 
     # We can now remove the local entry, so we dont upload it again
-    clear_lua_table_in_file(LOCAL_CHARACTER_PATH, "LocalDeathLoggerDB")
+    clear_lua_table_in_file(config.LOCAL_CHARACTER_PATH, "LocalDeathLoggerDB")
     
     return True

@@ -6,18 +6,24 @@ local SSR = Saellskapsresan
 
 -- Initialize UI function (called in ADDON_LOADED)
 function SSR.InitializeSystem()
+
+    -- GlobalRemote
     CurrentCharacter = CurrentCharacter or ""
     DeathLoggerDB = DeathLoggerDB or {}
     LastLogonDB = LastLogonDB or {}
     SyncLoaded = SyncLoaded or false
     CharacterProfessionsDB = CharacterProfessionsDB or {}
     CharacterStatsDB = CharacterStatsDB or {}
+    LeaderboardsDB = LeaderboardsDB or {}
+
+    -- Local
     LocalCurrentCharacter = LocalCurrentCharacter or ""
     LocalDeathLoggerDB = LocalDeathLoggerDB or {}
     LocalLastLogonDB = LocalLastLogonDB or {}
     LocalSyncLoaded = LocalSyncLoaded or false
     LocalCharacterProfessionsDB = LocalCharacterProfessionsDB or {}
     LocalCharacterStatsDB = LocalCharacterStatsDB or {}
+    CachedCharacterStatsDB = CachedCharacterStatsDB or {}
     print("[Sällskapsresan] v" .. SSR.addonVersion .." har initierats!")
 end
 

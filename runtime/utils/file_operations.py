@@ -1,5 +1,5 @@
 import os
-from config import REQUIRED_SAVEDVARS, DEFAULT_SAVEDVARS_CONTENT, GLOBAL_ACCOUNT_PATH
+import config
 
 def read_lua_file(file_path):
     """Read a Lua file and return its content."""
@@ -98,32 +98,32 @@ def validate_saved_variables():
     Returns:
         bool: True if validation is successful, False otherwise
     """
-    if "REPLACEWITHACCOUNTNAME" in GLOBAL_ACCOUNT_PATH:
+    if "REPLACEWITHACCOUNTNAME" in config.GLOBAL_ACCOUNT_PATH:
         print("[ERROR] You have not changed to your accountname in the accountName.txt file in the Saellskapsresan addon folder. Please do this and run again!")
         return False
 
     # Check if SavedVariables file exists
-    if os.path.exists(GLOBAL_ACCOUNT_PATH):
-        print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' exists. Validating content...")
+    if os.path.exists(config.GLOBAL_ACCOUNT_PATH):
+        print(f"[LOG] File '{config.GLOBAL_ACCOUNT_PATH}' exists. Validating content...")
         
         # Read file content
-        with open(GLOBAL_ACCOUNT_PATH, 'r', encoding='cp1252') as f:
+        with open(config.GLOBAL_ACCOUNT_PATH, 'r', encoding='cp1252') as f:
             content = f.read()
         
         # Check if all required variables are present
-        all_vars_present = all(var in content for var in REQUIRED_SAVEDVARS)
+        all_vars_present = all(var in content for var in config.REQUIRED_SAVEDVARS)
         
         if not all_vars_present:
-            print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' is missing required variables. Recreating it...")
-            with open(GLOBAL_ACCOUNT_PATH, 'w', encoding='cp1252') as f:
-                f.write(DEFAULT_SAVEDVARS_CONTENT)
+            print(f"[LOG] File '{config.GLOBAL_ACCOUNT_PATH}' is missing required variables. Recreating it...")
+            with open(config.GLOBAL_ACCOUNT_PATH, 'w', encoding='cp1252') as f:
+                f.write(config.DEFAULT_SAVEDVARS_CONTENT)
         else:
-            print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' is valid.")
+            print(f"[LOG] File '{config.GLOBAL_ACCOUNT_PATH}' is valid.")
     else:
         # File doesn't exist, create it
-        print(f"[LOG] File '{GLOBAL_ACCOUNT_PATH}' does not exist. Creating it...")
-        os.makedirs(os.path.dirname(GLOBAL_ACCOUNT_PATH), exist_ok=True)
-        with open(GLOBAL_ACCOUNT_PATH, 'w', encoding='cp1252') as f:
-            f.write(DEFAULT_SAVEDVARS_CONTENT)
+        print(f"[LOG] File '{config.GLOBAL_ACCOUNT_PATH}' does not exist. Creating it...")
+        os.makedirs(os.path.dirname(config.GLOBAL_ACCOUNT_PATH), exist_ok=True)
+        with open(config.GLOBAL_ACCOUNT_PATH, 'w', encoding='cp1252') as f:
+            f.write(config.DEFAULT_SAVEDVARS_CONTENT)
 
     return True

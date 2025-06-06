@@ -4,6 +4,26 @@
 Saellskapsresan = Saellskapsresan or {}
 local SSR = Saellskapsresan
 
+-- If we found a critical hit return TRUE and DAMAGEAMOUNT
+-- Else return FALSE and 0
+function SSR.TryParseCriticalHit(msg)
+    -- Check for melee critical hits
+    local _, endPos, target, damage = string.find(msg, "You crit (.-) for (%d+)")
+    local spellName
+    
+    if not target then
+        -- If not a melee crit, check for spell critical hits
+        _, endPos, spellName, target, damage = string.find(msg, "Your (.-) crits (.-) for (%d+)")
+    end
+    
+    if target and damage then
+        damage = tonumber(damage)
+        return true, damage
+    end
+    
+    return false, 0
+end
+
 -- Get the color code for a class
 function SSR.GetColorFromClassName(class)
     class = string.upper(class) 

@@ -271,7 +271,8 @@ def update_lua_table_in_file(lua, file_path, var_name, new_data):
         variables = []
         
         # Get all known table variables
-        table_names = ["DeathLoggerDB", "LastLogonDB", "CharacterProfessionsDB"]
+        table_names = ["DeathLoggerDB", "LastLogonDB", "CharacterProfessionsDB", "CharacterStatsDB", "LeaderboardsDB"]
+        # print("Get all previous tables")
         for name in table_names:
             if name in lua.globals():
                 table_data = lua_table_to_python(lua.globals()[name])

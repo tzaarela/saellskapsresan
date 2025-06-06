@@ -1,5 +1,5 @@
+import config
 from datetime import datetime
-from config import CHARACTER_PROFESSIONS_SHEET, GLOBAL_ACCOUNT_PATH, LOCAL_CHARACTER_PATH
 from google_sheets.operations import get_sheet_data, update_sheet_range, append_to_sheet
 from utils.lua_operations import extract_lua_table, update_lua_table_in_file
 from utils.file_operations import read_lua_file, clear_lua_table_in_file
@@ -11,7 +11,7 @@ def update_character_professions(service, lua, character, profession_string, las
         last_modified = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     # First, get the current sheet data to find info about this character
-    sheet_data = get_sheet_data(service, CHARACTER_PROFESSIONS_SHEET)
+    sheet_data = get_sheet_data(service, config.CHARACTER_PROFESSIONS_SHEET)
     
     # Find the row index and current data for this character
     character_row = None
@@ -44,16 +44,16 @@ def update_character_professions(service, lua, character, profession_string, las
     # Update or append to the sheet
     if character_row is not None:
         # Update existing row
-        update_range = f"{CHARACTER_PROFESSIONS_SHEET}!A{character_row+1}:C{character_row+1}"
+        update_range = f"{config.CHARACTER_PROFESSIONS_SHEET}!A{character_row+1}:C{character_row+1}"
         result = update_sheet_range(service, update_range, row_data)
         print(f"[LOG] Updated existing row for {character}")
     else:
         # Append new row
-        result = append_to_sheet(service, CHARACTER_PROFESSIONS_SHEET, row_data)
+        result = append_to_sheet(service, config.CHARACTER_PROFESSIONS_SHEET, row_data)
         print(f"[LOG] Added new row for {character}")
     
     # Also update local Lua file to keep in sync
-    content = read_lua_file(GLOBAL_ACCOUNT_PATH)
+    content = read_lua_file(config.GLOBAL_ACCOUNT_PATH)
     data = extract_lua_table(lua, content, "CharacterProfessionsDB")
     
     if character not in data:
@@ -62,9 +62,9 @@ def update_character_professions(service, lua, character, profession_string, las
     data[character]["professionString"] = profession_string
     data[character]["lastModified"] = last_modified
     
-    update_lua_table_in_file(lua, GLOBAL_ACCOUNT_PATH, "CharacterProfessionsDB", data)
+    update_lua_table_in_file(lua, config.GLOBAL_ACCOUNT_PATH, "CharacterProfessionsDB", data)
     
     # Clear the local data so it doesn't get reprocessed
-    clear_lua_table_in_file(LOCAL_CHARACTER_PATH, "LocalCharacterProfessionsDB")
+    clear_lua_table_in_file(config.LOCAL_CHARACTER_PATH, "LocalCharacterProfessionsDB")
     
     return True
