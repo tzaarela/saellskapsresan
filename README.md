@@ -2,6 +2,10 @@
 - Guild Addon/Mod for TurtleWoW: Hardcore. 
 - It's tailored for personal use at the moment, but I will make a public version of it, if it comes out as I want it.
 
+<img width="946" height="674" alt="Screenshot 2025-05-17 132640" src="https://github.com/user-attachments/assets/cf1ee3bf-d6fa-42be-9dea-2ccd4ee8d35c" />
+<img width="1214" height="676" alt="Screenshot 2025-06-06 143753" src="https://github.com/user-attachments/assets/817f105a-1cff-4a11-83a0-498991214750" />
+
+
 # Installation
 - Extract SaellskapsresanMod folder to TurtleWoW/Interface/Addons
 - Then inside SaellskapsresanMod folder, open accountname.txt and change the value to your account name (The one you login with)
